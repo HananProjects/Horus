@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+websockets
+anthropic
+openai-whisper
+pyttsx3
+sounddevice
+numpy
+scipy
+chromadb
+python-dotenv
+pillow
+pyautogui

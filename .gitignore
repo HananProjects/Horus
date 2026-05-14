@@ -1,0 +1,7 @@
+horus/backend/venv/
+horus/backend/chroma_data/
+horus/.env
+horus/frontend/node_modules/
+__pycache__/
+*.pyc
+.DS_Store
