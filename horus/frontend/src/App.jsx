@@ -8,6 +8,12 @@ export default function App() {
   const [status, setStatus] = useState("idle");
   const [actions, setActions] = useState([]);
   const [memories, setMemories] = useState([]);
+  const [pendingConfirm, setPendingConfirm] = useState(null);
+  const [settings, setSettings] = useState({
+    computer_use_enabled: true,
+    wake_word_enabled: false,
+    voice_rate: 185,
+  });
   const ws = useRef(null);
 
   useEffect(() => {
@@ -20,6 +26,7 @@ export default function App() {
 
     ws.current.onmessage = (e) => {
       const data = JSON.parse(e.data);
+
       if (data.type === "status") {
         setStatus(data.status);
       } else if (data.type === "message") {
@@ -30,12 +37,16 @@ export default function App() {
         }
       } else if (data.type === "memories") {
         setMemories(data.memories);
+      } else if (data.type === "confirm_action") {
+        setPendingConfirm(data.description);
+      } else if (data.type === "settings") {
+        setSettings(data.settings);
+      } else if (data.type === "wake_word") {
+        startVoice();
       }
     };
 
-    ws.current.onclose = () => {
-      setTimeout(connect, 2000);
-    };
+    ws.current.onclose = () => setTimeout(connect, 2000);
   }
 
   function sendText(text) {
@@ -51,14 +62,40 @@ export default function App() {
     }
   }
 
+  function handleConfirm(approved) {
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: "confirm_response", approved }));
+    }
+    setPendingConfirm(null);
+  }
+
+  function updateSettings(newSettings) {
+    setSettings(newSettings);
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: "update_settings", settings: newSettings }));
+    }
+  }
+
+  function clearMemory() {
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: "clear_memory" }));
+    }
+  }
+
   return (
     <Dashboard
       messages={messages}
       status={status}
       actions={actions}
       memories={memories}
+      pendingConfirm={pendingConfirm}
+      settings={settings}
       onSendText={sendText}
       onVoiceStart={startVoice}
+      onConfirmApprove={() => handleConfirm(true)}
+      onConfirmDeny={() => handleConfirm(false)}
+      onUpdateSettings={updateSettings}
+      onClearMemory={clearMemory}
     />
   );
 }

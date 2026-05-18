@@ -22,6 +22,13 @@ voice = VoicePipeline()
 memory = Memory()
 computer = ComputerUseAgent()
 
+# Global settings
+settings = {
+    "computer_use_enabled": True,
+    "wake_word_enabled": False,
+    "voice_rate": 185,
+}
+
 REMEMBER_TRIGGERS = ("remember that", "remember this", "don't forget", "note that", "keep in mind")
 
 COMPUTER_USE_TRIGGERS = (
@@ -48,16 +55,47 @@ async def send_memories(ws: WebSocket):
     await ws.send_json({"type": "memories", "memories": memory.get_all()})
 
 
+async def send_settings(ws: WebSocket):
+    await ws.send_json({"type": "settings", "settings": settings})
+
+
 def is_computer_use_request(text: str) -> bool:
+    if not settings["computer_use_enabled"]:
+        return False
     lower = text.lower()
     return any(trigger in lower for trigger in COMPUTER_USE_TRIGGERS)
+
+
+# Wake word background loop — broadcasts to all connected clients
+connected_clients: list[WebSocket] = []
+wake_word_task = None
+
+
+async def wake_word_loop():
+    while True:
+        if not settings["wake_word_enabled"] or not connected_clients:
+            await asyncio.sleep(1)
+            continue
+        detected = await asyncio.to_thread(voice.listen_for_wake_word)
+        if detected:
+            for ws in connected_clients:
+                try:
+                    await ws.send_json({"type": "wake_word"})
+                except Exception:
+                    pass
+
+
+@app.on_event("startup")
+async def startup():
+    global wake_word_task
+    wake_word_task = asyncio.create_task(wake_word_loop())
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
+    connected_clients.append(ws)
 
-    # Per-connection confirmation state
     confirm_event = asyncio.Event()
     confirm_result = {"approved": False}
 
@@ -69,6 +107,7 @@ async def websocket_endpoint(ws: WebSocket):
 
     await send_status(ws, "idle")
     await send_memories(ws)
+    await send_settings(ws)
 
     current_task = None
 
@@ -92,7 +131,18 @@ async def websocket_endpoint(ws: WebSocket):
                     handle_voice_turn(ws, request_confirmation)
                 )
 
+            elif msg_type == "update_settings":
+                new = data.get("settings", {})
+                settings.update({k: v for k, v in new.items() if k in settings})
+                await send_settings(ws)
+
+            elif msg_type == "clear_memory":
+                memory.clear()
+                await send_memories(ws)
+                await send_message(ws, "assistant", "Memory cleared.")
+
     except WebSocketDisconnect:
+        connected_clients.remove(ws)
         if current_task:
             current_task.cancel()
 
@@ -113,7 +163,6 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
         await send_status(ws, "thinking")
         lower = user_text.lower()
 
-        # Explicit memory
         for trigger in REMEMBER_TRIGGERS:
             if trigger in lower:
                 fact = user_text[lower.index(trigger) + len(trigger):].strip().lstrip(",: ")
@@ -122,7 +171,6 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
                     await send_action(ws, f"Storing explicit memory: {fact[:60]}...")
                 break
 
-        # Computer use routing
         if is_computer_use_request(user_text):
             await send_action(ws, "Detected computer use request...")
             result = await computer.run_task_async(
@@ -131,7 +179,7 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
                 confirm_cb=confirm,
             )
             await send_message(ws, "assistant", result)
-            await asyncio.to_thread(voice.speak, result)
+            await asyncio.to_thread(voice.speak, result, settings["voice_rate"])
         else:
             await send_action(ws, "Retrieving relevant memories...")
             relevant_memories = memory.retrieve(user_text)
@@ -146,7 +194,7 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
 
             await send_status(ws, "speaking")
             await send_action(ws, "Speaking response...")
-            await asyncio.to_thread(voice.speak, response)
+            await asyncio.to_thread(voice.speak, response, settings["voice_rate"])
 
     except asyncio.CancelledError:
         pass
