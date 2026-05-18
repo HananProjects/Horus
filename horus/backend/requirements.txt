@@ -11,3 +11,4 @@ chromadb
 python-dotenv
 pillow
 pyautogui
+ddgs

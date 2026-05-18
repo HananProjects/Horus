@@ -1,4 +1,5 @@
 import asyncio
+import re
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -57,6 +58,15 @@ async def send_memories(ws: WebSocket):
 
 async def send_settings(ws: WebSocket):
     await ws.send_json({"type": "settings", "settings": settings})
+
+
+def strip_markdown(text: str) -> str:
+    text = re.sub(r'\*{1,3}(.*?)\*{1,3}', r'\1', text)
+    text = re.sub(r'#{1,6}\s+', '', text)
+    text = re.sub(r'`{1,3}.*?`{1,3}', '', text, flags=re.DOTALL)
+    text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+    return text.strip()
 
 
 def is_computer_use_request(text: str) -> bool:
@@ -194,7 +204,7 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
 
             await send_status(ws, "speaking")
             await send_action(ws, "Speaking response...")
-            await asyncio.to_thread(voice.speak, response, settings["voice_rate"])
+            await asyncio.to_thread(voice.speak, strip_markdown(response), settings["voice_rate"])
 
     except asyncio.CancelledError:
         pass

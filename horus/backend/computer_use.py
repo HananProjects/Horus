@@ -2,6 +2,7 @@ import asyncio
 import base64
 import io
 import json
+import os
 import subprocess
 import re
 from pathlib import Path
@@ -122,7 +123,10 @@ class ComputerUseAgent:
         act = action.get("action", "")
 
         if act == "open_app":
-            subprocess.run(["open", "-a", action["app"]], check=False)
+            try:
+                os.startfile(action["app"])
+            except Exception:
+                subprocess.Popen(["cmd", "/c", "start", "", action["app"]], shell=False)
 
         elif act in ("click", "double_click", "right_click"):
             x, y = action["x"], action["y"]

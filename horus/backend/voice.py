@@ -1,10 +1,12 @@
 import tempfile
 import os
+import sys
 import subprocess
 import numpy as np
 import sounddevice as sd
 import whisper
 import scipy.io.wavfile as wav
+
 
 SAMPLE_RATE = 16000
 DURATION = 5
@@ -63,4 +65,17 @@ class VoicePipeline:
         return any(v in text for v in WAKE_VARIANTS)
 
     def speak(self, text: str, rate: int = 185):
-        subprocess.run(["say", "-v", "Daniel", "-r", str(rate), text], check=False)
+        if sys.platform == "win32":
+            # Map WPM (100-300) to SAPI5 rate (-10 to 10)
+            sapi_rate = max(-10, min(10, int((rate - 150) / 15)))
+            ps = (
+                "Add-Type -AssemblyName System.Speech; "
+                "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+                f"$s.Rate = {sapi_rate}; "
+                "$s.Speak($env:HORUS_SPEECH)"
+            )
+            env = os.environ.copy()
+            env["HORUS_SPEECH"] = text
+            subprocess.run(["powershell", "-Command", ps], env=env, check=False)
+        else:
+            subprocess.run(["say", "-v", "Daniel", "-r", str(rate), text], check=False)
