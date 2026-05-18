@@ -6,6 +6,7 @@ import MemoryPanel from "./MemoryPanel";
 import ConfirmModal from "./ConfirmModal";
 import SettingsPanel from "./SettingsPanel";
 import QuickActions from "./QuickActions";
+import NeuralSphere from "./NeuralSphere";
 
 export default function Dashboard({
   messages, status, actions, memories, pendingConfirm, settings,
@@ -65,9 +66,11 @@ export default function Dashboard({
       {/* Quick actions */}
       <QuickActions onSendText={onSendText} disabled={busy} />
 
-      {/* Main grid */}
+      {/* Main grid — 3 columns */}
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex-1 flex flex-col border-r border-hud-border">
+
+        {/* Left: conversation */}
+        <div className="w-80 flex flex-col border-r border-hud-border flex-shrink-0">
           <ConversationFeed
             messages={messages}
             onSendText={onSendText}
@@ -76,7 +79,21 @@ export default function Dashboard({
           />
         </div>
 
-        <div className="w-80 flex flex-col">
+        {/* Center: neural sphere */}
+        <div className="flex-1 flex flex-col items-center justify-center bg-hud-bg relative overflow-hidden">
+          <div className="w-full h-full">
+            <NeuralSphere status={status} />
+          </div>
+          {/* Status label below sphere */}
+          <div className="absolute bottom-4 left-0 right-0 flex justify-center">
+            <span className="text-xs tracking-widest text-hud-muted uppercase">
+              {status === "idle" ? "STANDBY" : status.toUpperCase()}
+            </span>
+          </div>
+        </div>
+
+        {/* Right: action log + memory */}
+        <div className="w-80 flex flex-col border-l border-hud-border flex-shrink-0">
           <div className="flex-1 border-b border-hud-border overflow-hidden">
             <ActionLog actions={actions} />
           </div>
@@ -84,6 +101,7 @@ export default function Dashboard({
             <MemoryPanel memories={memories} />
           </div>
         </div>
+
       </div>
     </div>
   );
