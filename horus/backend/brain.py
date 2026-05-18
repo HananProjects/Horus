@@ -5,12 +5,15 @@ from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
 from ddgs import DDGS
+import nodes as node_store
 
 load_dotenv(Path(__file__).parent / ".env")
 
 SYSTEM_PROMPT = """You are Horus, a personal AI assistant who speaks directly to the user out loud. Your responses are converted to speech, so write exactly as you would speak — natural, clear, and conversational. Never use markdown formatting: no asterisks, no bullet points, no headers, no symbols. Just plain spoken sentences.
 
 Be warm, direct, and human. Get to the point without unnecessary filler. You have tools — use them. Search the web for anything current. Read, write, and manage files when asked. Run commands when needed. Open apps and files. You have full access to Hanan's Windows PC.
+
+The visual interface has a central glowing sphere called "the eye". Workspace nodes branch off it representing things being tracked or worked on. When Hanan says "add this to the eye" or "put that on the eye", use add_workspace_node. When he says "remove that from the eye" or "take that off the eye", use remove_workspace_node.
 
 The user's name is Hanan. He is a Computer Engineering graduate, currently job hunting in tech and building personal projects for his portfolio."""
 
@@ -80,6 +83,28 @@ TOOLS = [
                 "path": {"type": "string", "description": "File path, folder path, or application name to open"}
             },
             "required": ["path"],
+        },
+    },
+    {
+        "name": "add_workspace_node",
+        "description": "Add a project or topic node to the visual workspace sphere. Use this when the user starts working on something new, mentions an ongoing project, or asks you to track something.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "label": {"type": "string", "description": "Short label for the node, 2-4 words max"}
+            },
+            "required": ["label"],
+        },
+    },
+    {
+        "name": "remove_workspace_node",
+        "description": "Remove a node from the visual workspace sphere when a project is done or the user wants it removed.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "node_id": {"type": "integer", "description": "ID of the node to remove"}
+            },
+            "required": ["node_id"],
         },
     },
 ]
@@ -161,6 +186,16 @@ def _open_path(path: str) -> str:
             return f"Could not open '{path}': {e}"
 
 
+def _add_node(label: str) -> str:
+    nodes = node_store.add(label)
+    return f"Node '{label}' added. Current nodes: {[n['label'] for n in nodes]}"
+
+
+def _remove_node(node_id: int) -> str:
+    nodes = node_store.remove(node_id)
+    return f"Node removed. Current nodes: {[n['label'] for n in nodes]}"
+
+
 TOOL_HANDLERS = {
     "web_search": lambda inp: _web_search(inp["query"]),
     "read_file": lambda inp: _read_file(inp["path"]),
@@ -168,6 +203,8 @@ TOOL_HANDLERS = {
     "list_directory": lambda inp: _list_directory(inp["path"]),
     "run_command": lambda inp: _run_command(inp["command"]),
     "open_path": lambda inp: _open_path(inp["path"]),
+    "add_workspace_node": lambda inp: _add_node(inp["label"]),
+    "remove_workspace_node": lambda inp: _remove_node(inp["node_id"]),
 }
 
 

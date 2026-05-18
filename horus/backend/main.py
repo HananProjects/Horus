@@ -7,6 +7,7 @@ from brain import Brain
 from voice import VoicePipeline
 from memory import Memory
 from computer_use import ComputerUseAgent
+import nodes as node_store
 
 app = FastAPI(title="Horus")
 
@@ -54,6 +55,10 @@ async def send_action(ws: WebSocket, action: str):
 
 async def send_memories(ws: WebSocket):
     await ws.send_json({"type": "memories", "memories": memory.get_all()})
+
+
+async def send_nodes(ws: WebSocket):
+    await ws.send_json({"type": "nodes", "nodes": node_store.load()})
 
 
 async def send_settings(ws: WebSocket):
@@ -118,6 +123,7 @@ async def websocket_endpoint(ws: WebSocket):
     await send_status(ws, "idle")
     await send_memories(ws)
     await send_settings(ws)
+    await send_nodes(ws)
 
     current_task = None
 
@@ -150,6 +156,10 @@ async def websocket_endpoint(ws: WebSocket):
                 memory.clear()
                 await send_memories(ws)
                 await send_message(ws, "assistant", "Memory cleared.")
+
+            elif msg_type == "remove_node":
+                node_store.remove(data.get("node_id"))
+                await send_nodes(ws)
 
     except WebSocketDisconnect:
         connected_clients.remove(ws)
@@ -202,6 +212,7 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
             memory.store(user_text, response)
             await send_memories(ws)
 
+            await send_nodes(ws)
             await send_status(ws, "speaking")
             await send_action(ws, "Speaking response...")
             await asyncio.to_thread(voice.speak, strip_markdown(response), settings["voice_rate"])
