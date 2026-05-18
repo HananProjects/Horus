@@ -1,12 +1,36 @@
-import React from "react";
+import React, { useState } from "react";
 import StatusBar from "./StatusBar";
 import ConversationFeed from "./ConversationFeed";
 import ActionLog from "./ActionLog";
 import MemoryPanel from "./MemoryPanel";
+import ConfirmModal from "./ConfirmModal";
+import SettingsPanel from "./SettingsPanel";
+import QuickActions from "./QuickActions";
 
-export default function Dashboard({ messages, status, actions, memories, onSendText, onVoiceStart }) {
+export default function Dashboard({
+  messages, status, actions, memories, pendingConfirm, settings,
+  onSendText, onVoiceStart, onConfirmApprove, onConfirmDeny,
+  onUpdateSettings, onClearMemory,
+}) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const busy = status !== "idle";
+
   return (
     <div className="min-h-screen bg-hud-bg text-hud-text font-mono flex flex-col">
+      <ConfirmModal
+        description={pendingConfirm}
+        onApprove={onConfirmApprove}
+        onDeny={onConfirmDeny}
+      />
+
+      <SettingsPanel
+        open={settingsOpen}
+        settings={settings}
+        onUpdateSettings={onUpdateSettings}
+        onClearMemory={() => { onClearMemory(); setSettingsOpen(false); }}
+        onClose={() => setSettingsOpen(false)}
+      />
+
       {/* Top bar */}
       <header className="border-b border-hud-border px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -16,17 +40,42 @@ export default function Dashboard({ messages, status, actions, memories, onSendT
           <span className="text-hud-glow font-bold tracking-widest text-lg">HORUS</span>
           <span className="text-hud-muted text-xs tracking-wider">/ AGENTIC ASSISTANT</span>
         </div>
-        <StatusBar status={status} />
+
+        <div className="flex items-center gap-4">
+          {settings.wake_word_enabled && (
+            <span className="text-xs text-hud-success tracking-widest animate-pulse">
+              ● WAKE WORD ACTIVE
+            </span>
+          )}
+          {!settings.computer_use_enabled && (
+            <span className="text-xs text-hud-danger tracking-widest">
+              COMPUTER USE OFF
+            </span>
+          )}
+          <StatusBar status={status} />
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="text-hud-muted hover:text-hud-accent text-xs tracking-widest border border-hud-border hover:border-hud-accent px-3 py-1 rounded transition-all"
+          >
+            SETTINGS
+          </button>
+        </div>
       </header>
+
+      {/* Quick actions */}
+      <QuickActions onSendText={onSendText} disabled={busy} />
 
       {/* Main grid */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left: Conversation */}
         <div className="flex-1 flex flex-col border-r border-hud-border">
-          <ConversationFeed messages={messages} onSendText={onSendText} onVoiceStart={onVoiceStart} status={status} />
+          <ConversationFeed
+            messages={messages}
+            onSendText={onSendText}
+            onVoiceStart={onVoiceStart}
+            status={status}
+          />
         </div>
 
-        {/* Right: Action Log + Memory */}
         <div className="w-80 flex flex-col">
           <div className="flex-1 border-b border-hud-border overflow-hidden">
             <ActionLog actions={actions} />
