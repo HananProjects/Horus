@@ -3,7 +3,7 @@ import re
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from brain import Brain
+from brain import Brain, _open_path, _read_file, _web_search
 from voice import VoicePipeline
 from memory import Memory
 from computer_use import ComputerUseAgent
@@ -161,6 +161,11 @@ async def websocket_endpoint(ws: WebSocket):
                 node_store.remove(data.get("node_id"))
                 await send_nodes(ws)
 
+            elif msg_type == "node_action":
+                current_task = asyncio.create_task(
+                    handle_node_action(ws, data.get("node_id"), data.get("action"))
+                )
+
     except WebSocketDisconnect:
         connected_clients.remove(ws)
         if current_task:
@@ -176,6 +181,69 @@ async def handle_voice_turn(ws: WebSocket, confirm):
         return
     await send_message(ws, "user", user_text)
     await handle_turn(ws, user_text, confirm)
+
+
+async def handle_node_action(ws: WebSocket, node_id: int, action: str):
+    all_nodes = node_store.load()
+    node = next((n for n in all_nodes if n["id"] == node_id), None)
+    if not node:
+        await send_message(ws, "assistant", "Node not found.")
+        return
+
+    meta = node.get("metadata") or {}
+    path = meta.get("path", "")
+    url = meta.get("url", "")
+    query = meta.get("query", node["label"])
+
+    try:
+        if action == "remove":
+            node_store.remove(node_id)
+            await send_nodes(ws)
+
+        elif action in ("open", "launch", "play", "preview"):
+            target = path or url or meta.get("name", node["label"])
+            result = await asyncio.to_thread(_open_path, target)
+            await send_action(ws, result)
+
+        elif action == "summarize":
+            if not path:
+                await send_message(ws, "assistant", f"No file path stored for {node['label']}.")
+                return
+            await send_status(ws, "thinking")
+            content = await asyncio.to_thread(_read_file, path)
+            prompt = f"Summarize this file for me in a few sentences. Path: {path}\n\n{content[:4000]}"
+            response = await asyncio.to_thread(brain.chat, prompt, [])
+            await send_message(ws, "assistant", response)
+            await send_status(ws, "speaking")
+            await asyncio.to_thread(voice.speak, strip_markdown(response), settings["voice_rate"])
+
+        elif action == "read_aloud":
+            if not path:
+                await send_message(ws, "assistant", f"No file path stored for {node['label']}.")
+                return
+            await send_status(ws, "speaking")
+            content = await asyncio.to_thread(_read_file, path)
+            await asyncio.to_thread(voice.speak, content[:3000], settings["voice_rate"])
+
+        elif action == "search_again":
+            await send_status(ws, "thinking")
+            results = await asyncio.to_thread(_web_search, query)
+            prompt = f"I searched again for '{query}'. Here are the results:\n\n{results}\n\nGive me a brief summary of what's new."
+            response = await asyncio.to_thread(brain.chat, prompt, [])
+            await send_message(ws, "assistant", response)
+            await send_status(ws, "speaking")
+            await asyncio.to_thread(voice.speak, strip_markdown(response), settings["voice_rate"])
+
+        elif action == "complete":
+            node_store.remove(node_id)
+            await send_nodes(ws)
+            await send_message(ws, "assistant", f"Marked '{node['label']}' as complete.")
+
+    except Exception as e:
+        await send_message(ws, "assistant", f"[Error: {e}]")
+    finally:
+        await send_status(ws, "idle")
+        await send_action(ws, "")
 
 
 async def handle_turn(ws: WebSocket, user_text: str, confirm):

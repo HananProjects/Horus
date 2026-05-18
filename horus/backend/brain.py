@@ -6,6 +6,7 @@ from typing import Optional
 from dotenv import load_dotenv
 from ddgs import DDGS
 import nodes as node_store
+import profile as user_profile
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -13,9 +14,9 @@ SYSTEM_PROMPT = """You are Horus, a personal AI assistant who speaks directly to
 
 Be warm, direct, and human. Get to the point without unnecessary filler. You have tools — use them. Search the web for anything current. Read, write, and manage files when asked. Run commands when needed. Open apps and files. You have full access to Hanan's Windows PC.
 
-The visual interface has a central glowing sphere called "the eye". Workspace nodes branch off it representing things being tracked or worked on. When Hanan says "add this to the eye" or "put that on the eye", use add_workspace_node. When he says "remove that from the eye" or "take that off the eye", use remove_workspace_node.
+The visual interface has a central glowing sphere called "the eye". Workspace nodes branch off it representing things being tracked or worked on. When Hanan says "add this to the eye" or "put that on the eye", use add_workspace_node with the right node_type and metadata. When he says "remove that from the eye" or "take that off the eye", use remove_workspace_node.
 
-The user's name is Hanan. He is a Computer Engineering graduate, currently job hunting in tech and building personal projects for his portfolio."""
+You are constantly learning about Hanan. Whenever a conversation reveals something meaningful — a preference, a habit, a goal, something he dislikes, his communication style, an ongoing project — call update_user_profile immediately. Be specific. Over time this makes you genuinely tailored to him. Don't wait for explicit instructions; pick up on implicit signals too."""
 
 TOOLS = [
     {
@@ -87,13 +88,41 @@ TOOLS = [
     },
     {
         "name": "add_workspace_node",
-        "description": "Add a project or topic node to the visual workspace sphere. Use this when the user starts working on something new, mentions an ongoing project, or asks you to track something.",
+        "description": "Add a project or topic node to the visual workspace sphere. Include node_type and metadata so the node shows relevant right-click actions. Use this when the user starts working on something new, mentions an ongoing project, or asks you to track something.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "label": {"type": "string", "description": "Short label for the node, 2-4 words max"}
+                "label": {"type": "string", "description": "Short label for the node, 2-4 words max"},
+                "node_type": {
+                    "type": "string",
+                    "description": "Type of content: pdf, url, image, file, app, task, note, music, search, or generic",
+                    "enum": ["pdf", "url", "image", "file", "app", "task", "note", "music", "search", "generic"],
+                },
+                "metadata": {
+                    "type": "object",
+                    "description": "Relevant info for actions — files: {\"path\": \"C:/...\"}, URLs: {\"url\": \"https://...\"}, apps: {\"name\": \"AppName\"}, search: {\"query\": \"...\"}",
+                },
             },
             "required": ["label"],
+        },
+    },
+    {
+        "name": "update_user_profile",
+        "description": "Store something you've learned about Hanan. Call this proactively whenever a conversation reveals a preference, habit, goal, dislike, project, or communication style. Be specific and concise. This is how you become genuinely personalized to him over time.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": ["preferences", "habits", "goals", "dislikes", "projects", "facts", "communication"],
+                    "description": "What type of information this is about Hanan",
+                },
+                "item": {
+                    "type": "string",
+                    "description": "Concise factual statement, e.g. 'Prefers short answers over long explanations' or 'Works on Horus project in the evenings'",
+                },
+            },
+            "required": ["category", "item"],
         },
     },
     {
@@ -186,9 +215,9 @@ def _open_path(path: str) -> str:
             return f"Could not open '{path}': {e}"
 
 
-def _add_node(label: str) -> str:
-    nodes = node_store.add(label)
-    return f"Node '{label}' added. Current nodes: {[n['label'] for n in nodes]}"
+def _add_node(label: str, node_type: str = "generic", metadata: dict = None) -> str:
+    nodes = node_store.add(label, node_type, metadata or {})
+    return f"Node '{label}' ({node_type}) added. Current nodes: {[n['label'] for n in nodes]}"
 
 
 def _remove_node(node_id: int) -> str:
@@ -203,8 +232,9 @@ TOOL_HANDLERS = {
     "list_directory": lambda inp: _list_directory(inp["path"]),
     "run_command": lambda inp: _run_command(inp["command"]),
     "open_path": lambda inp: _open_path(inp["path"]),
-    "add_workspace_node": lambda inp: _add_node(inp["label"]),
+    "add_workspace_node": lambda inp: _add_node(inp["label"], inp.get("node_type", "generic"), inp.get("metadata")),
     "remove_workspace_node": lambda inp: _remove_node(inp["node_id"]),
+    "update_user_profile": lambda inp: user_profile.add_item(inp["category"], inp["item"]),
 }
 
 
@@ -219,7 +249,12 @@ class Brain:
         if memories:
             memory_block = "\n\n[Relevant memories]\n" + "\n".join(f"- {m}" for m in memories)
 
-        system = SYSTEM_PROMPT + memory_block
+        profile = user_profile.load()
+        profile_block = user_profile.to_prompt_block(profile)
+        system = SYSTEM_PROMPT
+        if profile_block:
+            system += f"\n\n{profile_block}"
+        system += memory_block
         self.history.append({"role": "user", "content": user_text})
 
         messages = list(self.history)

@@ -14,10 +14,10 @@ def _save(nodes: list):
     _FILE.write_text(json.dumps(nodes, indent=2), encoding="utf-8")
 
 
-def add(label: str) -> list:
+def add(label: str, node_type: str = "generic", metadata: dict = None) -> list:
     nodes = load()
     next_id = max((n["id"] for n in nodes), default=-1) + 1
-    nodes.append({"id": next_id, "label": label})
+    nodes.append({"id": next_id, "label": label, "type": node_type, "metadata": metadata or {}})
     _save(nodes)
     return nodes
 

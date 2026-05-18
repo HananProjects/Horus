@@ -1,0 +1,20 @@
+{
+  "preferences": [],
+  "habits": [],
+  "goals": [
+    "Land a software engineering job in tech",
+    "Build strong portfolio projects"
+  ],
+  "dislikes": [],
+  "projects": [
+    "Horus: personal AI assistant with neural sphere UI and voice control",
+    "Wants to integrate Notion calendar into Horus so he can query his schedule by voice",
+    "Actively wants to integrate Notion calendar into Horus via the Notion API so he can query his schedule by voice"
+  ],
+  "facts": [
+    "Computer Engineering graduate",
+    "Uses Windows PC",
+    "Name is Hanan"
+  ],
+  "communication": []
+}
