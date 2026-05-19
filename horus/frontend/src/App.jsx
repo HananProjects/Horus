@@ -43,7 +43,9 @@ export default function App() {
         setNodes(data.nodes);
       } else if (data.type === "panel") {
         setPanels(prev => {
-          const filtered = prev.filter(p => p.panel_type !== data.panel_type);
+          const panelKey = p => p.panel_type === "visual" ? `visual_${p.content_type}` : p.panel_type;
+          const incomingKey = data.panel_type === "visual" ? `visual_${data.content_type}` : data.panel_type;
+          const filtered = prev.filter(p => panelKey(p) !== incomingKey);
           return [...filtered, { ...data, id: Date.now() }];
         });
       } else if (data.type === "confirm_action") {
