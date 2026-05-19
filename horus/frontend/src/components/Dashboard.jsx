@@ -20,7 +20,7 @@ const CORNER_STYLE = (pos) => ({
 });
 
 export default function Dashboard({
-  messages, status, actions, memories, nodes, panels, pendingConfirm, settings,
+  messages, status, actions, memories, nodes, panels, pendingConfirm, settings, micDevices,
   onSendText, onVoiceStart, onConfirmApprove, onConfirmDeny,
   onUpdateSettings, onClearMemory, onRemoveNode, onNodeAction, onDismissPanel,
 }) {
@@ -52,6 +52,7 @@ export default function Dashboard({
       <SettingsPanel
         open={settingsOpen}
         settings={settings}
+        micDevices={micDevices}
         onUpdateSettings={onUpdateSettings}
         onClearMemory={() => { onClearMemory(); setSettingsOpen(false); }}
         onClose={() => setSettingsOpen(false)}

@@ -11,22 +11,31 @@ export default function App() {
   const [nodes, setNodes] = useState([]);
   const [panels, setPanels] = useState([]);
   const [pendingConfirm, setPendingConfirm] = useState(null);
+  const [micDevices, setMicDevices] = useState([]);
   const [settings, setSettings] = useState({
     computer_use_enabled: true,
-    wake_word_enabled: false,
+    wake_word_enabled: true,
     voice_rate: 185,
+    mic_device_index: null,
   });
   const ws = useRef(null);
 
   useEffect(() => {
     connect();
-    return () => ws.current?.close();
+    return () => {
+      if (ws.current) {
+        ws.current.onclose = null;
+        ws.current.close();
+      }
+    };
   }, []);
 
   function connect() {
-    ws.current = new WebSocket(WS_URL);
+    const socket = new WebSocket(WS_URL);
+    ws.current = socket;
 
-    ws.current.onmessage = (e) => {
+    socket.onmessage = (e) => {
+      if (ws.current !== socket) return;
       const data = JSON.parse(e.data);
 
       if (data.type === "status") {
@@ -52,12 +61,17 @@ export default function App() {
         setPendingConfirm(data.description);
       } else if (data.type === "settings") {
         setSettings(data.settings);
+      } else if (data.type === "devices") {
+        setMicDevices(data.devices);
       } else if (data.type === "wake_word") {
         startVoice();
       }
     };
 
-    ws.current.onclose = () => setTimeout(connect, 2000);
+    socket.onclose = () => {
+      if (ws.current !== socket) return;
+      setTimeout(connect, 2000);
+    };
   }
 
   function sendText(text) {
@@ -123,6 +137,7 @@ export default function App() {
       onVoiceStart={startVoice}
       onConfirmApprove={() => handleConfirm(true)}
       onConfirmDeny={() => handleConfirm(false)}
+      micDevices={micDevices}
       onUpdateSettings={updateSettings}
       onClearMemory={clearMemory}
       onRemoveNode={removeNode}
