@@ -15,7 +15,7 @@ const VISUAL_CONFIG = {
   video:   { label: "VIDEO",      color: "#ef233c", defaultW: 400, defaultH: 260 },
   webpage: { label: "PREVIEW",    color: "#06d6a0", defaultW: 420, defaultH: 340 },
   score:   { label: "LIVE SCORE", color: "#ef233c", defaultW: 340, defaultH: 210 },
-  card:    { label: "INFO CARD",  color: "#f59e0b", defaultW: 300, defaultH: 320 },
+  card:    { label: "INFO CARD",  color: "#f59e0b", defaultW: 360, defaultH: 420 },
 };
 
 // --- Sparkline for stock ---
@@ -274,12 +274,12 @@ function CardContent({ panel }) {
         }}>
           {section.heading && (
             <div style={{
-              fontSize: "0.44rem",
+              fontSize: "0.62rem",
               letterSpacing: "0.2em",
               color: accent,
-              opacity: 0.5,
+              opacity: 0.6,
               textTransform: "uppercase",
-              marginBottom: 6,
+              marginBottom: 8,
             }}>
               {section.heading}
             </div>
@@ -290,12 +290,12 @@ function CardContent({ panel }) {
               justifyContent: "space-between",
               alignItems: "baseline",
               gap: 10,
-              marginBottom: 4,
+              marginBottom: 6,
             }}>
-              <span style={{ fontSize: "0.54rem", color: "rgba(90,143,163,0.55)", letterSpacing: "0.04em", flexShrink: 0 }}>
+              <span style={{ fontSize: "0.72rem", color: "rgba(90,143,163,0.65)", letterSpacing: "0.04em", flexShrink: 0 }}>
                 {row.label}
               </span>
-              <span style={{ fontSize: "0.62rem", color: "#caf0f8", opacity: 0.9, textAlign: "right", lineHeight: 1.3 }}>
+              <span style={{ fontSize: "0.82rem", color: "#caf0f8", opacity: 0.9, textAlign: "right", lineHeight: 1.4 }}>
                 {row.value}
               </span>
             </div>
@@ -305,10 +305,10 @@ function CardContent({ panel }) {
       {panel.badge && (
         <div style={{
           padding: "6px 14px 8px",
-          fontSize: "0.46rem",
+          fontSize: "0.62rem",
           letterSpacing: "0.14em",
           color: accent,
-          opacity: 0.35,
+          opacity: 0.45,
           textAlign: "center",
           textTransform: "uppercase",
           borderTop: "1px solid rgba(245,158,11,0.08)",
