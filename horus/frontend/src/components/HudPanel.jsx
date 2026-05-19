@@ -15,6 +15,7 @@ const VISUAL_CONFIG = {
   video:   { label: "VIDEO",      color: "#ef233c", defaultW: 400, defaultH: 260 },
   webpage: { label: "PREVIEW",    color: "#06d6a0", defaultW: 420, defaultH: 340 },
   score:   { label: "LIVE SCORE", color: "#ef233c", defaultW: 340, defaultH: 210 },
+  card:    { label: "INFO CARD",  color: "#f59e0b", defaultW: 300, defaultH: 320 },
 };
 
 // --- Sparkline for stock ---
@@ -95,9 +96,21 @@ function StockContent({ panel }) {
 
 // --- Image content ---
 
+const PROXY = (url) => `http://localhost:8000/proxy-image?url=${encodeURIComponent(url)}`;
+
 function ImageContent({ panel }) {
   const [loaded, setLoaded] = useState(false);
+  const [src, setSrc] = useState(panel.url);
   const [err, setErr] = useState(false);
+
+  const handleError = () => {
+    if (src === panel.url) {
+      setSrc(PROXY(panel.url));
+    } else {
+      setErr(true);
+    }
+  };
+
   return (
     <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", position: "relative" }}>
       {!loaded && !err && (
@@ -109,10 +122,10 @@ function ImageContent({ panel }) {
         <span style={{ fontSize: "0.6rem", color: "rgba(90,143,163,0.45)", letterSpacing: "0.1em" }}>IMAGE UNAVAILABLE</span>
       ) : (
         <img
-          src={panel.url}
+          src={src}
           alt={panel.title}
           onLoad={() => setLoaded(true)}
-          onError={() => setErr(true)}
+          onError={handleError}
           style={{
             maxWidth: "100%", maxHeight: "100%", objectFit: "contain",
             opacity: loaded ? 1 : 0,
@@ -247,6 +260,67 @@ function ScoreContent({ panel }) {
   );
 }
 
+// --- Info card ---
+
+function CardContent({ panel }) {
+  const sections = panel.sections || [];
+  const accent = "#f59e0b";
+  return (
+    <div className="scrollbar-hide" style={{ display: "flex", flexDirection: "column", height: "100%", overflowY: "auto" }}>
+      {sections.map((section, i) => (
+        <div key={i} style={{
+          padding: "8px 14px",
+          borderBottom: i < sections.length - 1 ? "1px solid rgba(245,158,11,0.08)" : "none",
+        }}>
+          {section.heading && (
+            <div style={{
+              fontSize: "0.44rem",
+              letterSpacing: "0.2em",
+              color: accent,
+              opacity: 0.5,
+              textTransform: "uppercase",
+              marginBottom: 6,
+            }}>
+              {section.heading}
+            </div>
+          )}
+          {(section.rows || []).map((row, j) => (
+            <div key={j} style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+              gap: 10,
+              marginBottom: 4,
+            }}>
+              <span style={{ fontSize: "0.54rem", color: "rgba(90,143,163,0.55)", letterSpacing: "0.04em", flexShrink: 0 }}>
+                {row.label}
+              </span>
+              <span style={{ fontSize: "0.62rem", color: "#caf0f8", opacity: 0.9, textAlign: "right", lineHeight: 1.3 }}>
+                {row.value}
+              </span>
+            </div>
+          ))}
+        </div>
+      ))}
+      {panel.badge && (
+        <div style={{
+          padding: "6px 14px 8px",
+          fontSize: "0.46rem",
+          letterSpacing: "0.14em",
+          color: accent,
+          opacity: 0.35,
+          textAlign: "center",
+          textTransform: "uppercase",
+          borderTop: "1px solid rgba(245,158,11,0.08)",
+          marginTop: "auto",
+        }}>
+          {panel.badge}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Visual panel (wraps all visual content types) ---
 
 // Research panel anchor: right edge, top 10% — image panels sit just to its left
@@ -277,9 +351,10 @@ function VisualPanel({ panel, onDismiss }) {
       baseZ={25}
       onClose={() => onDismiss(panel.id)}
     >
-      {panel.content_type === "stock" && <StockContent panel={panel} />}
-      {panel.content_type === "image" && <ImageContent panel={panel} />}
-      {panel.content_type === "score" && <ScoreContent panel={panel} />}
+      {panel.content_type === "stock"   && <StockContent panel={panel} />}
+      {panel.content_type === "image"   && <ImageContent panel={panel} />}
+      {panel.content_type === "score"   && <ScoreContent panel={panel} />}
+      {panel.content_type === "card"    && <CardContent panel={panel} />}
       {(panel.content_type === "video" || panel.content_type === "webpage") && (
         <FrameContent url={panel.url} title={panel.title} />
       )}

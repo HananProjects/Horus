@@ -20,7 +20,7 @@ const CORNER_STYLE = (pos) => ({
 });
 
 export default function Dashboard({
-  messages, status, actions, memories, nodes, panels, pendingConfirm, settings, micDevices,
+  messages, status, actions, memories, nodes, edges, panels, pendingConfirm, settings, micDevices,
   onSendText, onVoiceStart, onConfirmApprove, onConfirmDeny,
   onUpdateSettings, onClearMemory, onRemoveNode, onNodeAction, onDismissPanel,
 }) {
@@ -64,7 +64,7 @@ export default function Dashboard({
       </div>
 
       {/* Orbital project nodes */}
-      <NodeOrbit nodes={nodes} onRemove={onRemoveNode} onNodeAction={onNodeAction} />
+      <NodeOrbit nodes={nodes} edges={edges ?? []} onRemove={onRemoveNode} onNodeAction={onNodeAction} />
 
       {/* Right-side floating data panels */}
       <HudPanels panels={panels ?? []} onDismiss={onDismissPanel} />

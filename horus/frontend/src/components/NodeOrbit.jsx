@@ -46,7 +46,7 @@ function getActions(nodeType) {
   return NODE_ACTIONS[nodeType] || NODE_ACTIONS.generic;
 }
 
-export default function NodeOrbit({ nodes, onRemove, onNodeAction }) {
+export default function NodeOrbit({ nodes, edges = [], onRemove, onNodeAction }) {
   const [dims, setDims] = useState({ w: window.innerWidth, h: window.innerHeight });
   const [positions, setPositions] = useState({});
   const [floats, setFloats] = useState({});
@@ -152,9 +152,34 @@ export default function NodeOrbit({ nodes, onRemove, onNodeAction }) {
 
   if (!nodes.length) return null;
 
+  // Build a lookup of effective visual positions for edge rendering
+  const getVPos = (nodeId) => {
+    const pos = positions[nodeId];
+    if (!pos) return null;
+    const isDragging = drag.current?.nodeId === nodeId;
+    const f = floats[nodeId] ?? { x: 0, y: 0 };
+    return {
+      x: isDragging ? pos.x : pos.x + f.x,
+      y: isDragging ? pos.y : pos.y + f.y,
+    };
+  };
+
   return (
     <div className="absolute inset-0 pointer-events-none z-10">
       <svg className="absolute inset-0 w-full h-full">
+        <defs>
+          <marker
+            id="arrowhead"
+            markerWidth="6"
+            markerHeight="6"
+            refX="5"
+            refY="3"
+            orient="auto"
+          >
+            <path d="M0,0 L0,6 L6,3 z" fill="#f59e0b" fillOpacity="0.75" />
+          </marker>
+        </defs>
+        {/* Lines from eye to each node */}
         {nodes.map(n => {
           const pos = positions[n.id];
           if (!pos) return null;
@@ -166,6 +191,20 @@ export default function NodeOrbit({ nodes, onRemove, onNodeAction }) {
             <line key={n.id}
               x1={cx} y1={cy} x2={vx} y2={vy}
               stroke="#f59e0b" strokeOpacity="0.18" strokeWidth="1" strokeDasharray="4 8"
+            />
+          );
+        })}
+
+        {/* Edges between linked nodes */}
+        {edges.map((e, i) => {
+          const from = getVPos(e.from);
+          const to = getVPos(e.to);
+          if (!from || !to) return null;
+          return (
+            <line key={i}
+              x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+              stroke="#f59e0b" strokeOpacity="0.6" strokeWidth="1.5"
+              markerEnd="url(#arrowhead)"
             />
           );
         })}

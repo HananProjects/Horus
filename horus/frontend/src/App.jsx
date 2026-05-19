@@ -9,6 +9,7 @@ export default function App() {
   const [actions, setActions] = useState([]);
   const [memories, setMemories] = useState([]);
   const [nodes, setNodes] = useState([]);
+  const [edges, setEdges] = useState([]);
   const [panels, setPanels] = useState([]);
   const [pendingConfirm, setPendingConfirm] = useState(null);
   const [micDevices, setMicDevices] = useState([]);
@@ -49,11 +50,16 @@ export default function App() {
       } else if (data.type === "memories") {
         setMemories(data.memories);
       } else if (data.type === "nodes") {
-        setNodes(data.nodes);
+        setNodes(data.nodes || []);
+        setEdges(data.edges || []);
       } else if (data.type === "panel") {
         setPanels(prev => {
-          const panelKey = p => p.panel_type === "visual" ? `visual_${p.content_type}` : p.panel_type;
-          const incomingKey = data.panel_type === "visual" ? `visual_${data.content_type}` : data.panel_type;
+          const panelKey = p => {
+            if (p.panel_type !== "visual") return p.panel_type;
+            if (p.content_type === "card") return `card_${p.title}`;
+            return `visual_${p.content_type}`;
+          };
+          const incomingKey = panelKey({ ...data, panel_type: data.panel_type });
           const filtered = prev.filter(p => panelKey(p) !== incomingKey);
           return [...filtered, { ...data, id: Date.now() }];
         });
@@ -108,7 +114,17 @@ export default function App() {
   }
 
   function dismissPanel(id) {
-    setPanels(prev => prev.filter(p => p.id !== id));
+    setPanels(prev => {
+      const panel = prev.find(p => p.id === id);
+      if (panel && ws.current?.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({
+          type: "dismiss_panel",
+          content_type: panel.content_type || "",
+          title: panel.title || "",
+        }));
+      }
+      return prev.filter(p => p.id !== id);
+    });
   }
 
   function removeNode(nodeId) {
@@ -130,6 +146,7 @@ export default function App() {
       actions={actions}
       memories={memories}
       nodes={nodes}
+      edges={edges}
       panels={panels}
       pendingConfirm={pendingConfirm}
       settings={settings}
