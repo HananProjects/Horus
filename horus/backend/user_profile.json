@@ -9,7 +9,8 @@
   "projects": [
     "Horus: personal AI assistant with neural sphere UI and voice control",
     "Wants to integrate Notion calendar into Horus so he can query his schedule by voice",
-    "Actively wants to integrate Notion calendar into Horus via the Notion API so he can query his schedule by voice"
+    "Actively wants to integrate Notion calendar into Horus via the Notion API so he can query his schedule by voice",
+    "Actively working on integrating Notion into the Horus eye/sphere UI as a workspace node"
   ],
   "facts": [
     "Computer Engineering graduate",

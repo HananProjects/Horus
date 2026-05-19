@@ -285,8 +285,11 @@ class Brain:
 
         reply = next(
             (block.text for block in response.content if hasattr(block, "text")),
-            "I couldn't generate a response."
+            None,
         )
+        if reply is None:
+            print(f"[brain] No text in response — stop_reason={response.stop_reason}, blocks={[b.type for b in response.content]}")
+            reply = "Sorry, I ran into an issue on that one. Try again."
 
         self.history.append({"role": "assistant", "content": reply})
         if len(self.history) > 40:
