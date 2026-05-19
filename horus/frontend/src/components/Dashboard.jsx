@@ -1,23 +1,48 @@
 import React, { useState } from "react";
-import StatusBar from "./StatusBar";
-import ConversationFeed from "./ConversationFeed";
-import ActionLog from "./ActionLog";
-import MemoryPanel from "./MemoryPanel";
 import ConfirmModal from "./ConfirmModal";
 import SettingsPanel from "./SettingsPanel";
-import QuickActions from "./QuickActions";
 import NeuralSphere from "./NeuralSphere";
+import ConversationFeed from "./ConversationFeed";
+import NodeOrbit from "./NodeOrbit";
+import HudPanels from "./HudPanel";
+import DraggableWindow from "./DraggableWindow";
+
+const CORNER_STYLE = (pos) => ({
+  position: "absolute",
+  width: 18,
+  height: 18,
+  ...pos,
+  borderTop: pos.top !== undefined ? "1px solid rgba(0,180,216,0.22)" : undefined,
+  borderBottom: pos.bottom !== undefined ? "1px solid rgba(0,180,216,0.22)" : undefined,
+  borderLeft: pos.left !== undefined ? "1px solid rgba(0,180,216,0.22)" : undefined,
+  borderRight: pos.right !== undefined ? "1px solid rgba(0,180,216,0.22)" : undefined,
+  pointerEvents: "none",
+});
 
 export default function Dashboard({
-  messages, status, actions, memories, pendingConfirm, settings,
+  messages, status, actions, memories, nodes, panels, pendingConfirm, settings,
   onSendText, onVoiceStart, onConfirmApprove, onConfirmDeny,
-  onUpdateSettings, onClearMemory,
+  onUpdateSettings, onClearMemory, onRemoveNode, onNodeAction, onDismissPanel,
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const busy = status !== "idle";
+  const currentAction = actions[0]?.text ?? "";
 
   return (
-    <div className="min-h-screen bg-hud-bg text-hud-text font-mono flex flex-col">
+    <div className="fixed inset-0 bg-hud-bg font-mono overflow-hidden">
+      {/* Scan lines overlay */}
+      <div style={{
+        position: "absolute", inset: 0, pointerEvents: "none", zIndex: 60,
+        backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px)",
+      }} />
+
+      {/* Corner brackets */}
+      <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 30 }}>
+        <div style={CORNER_STYLE({ top: 14, left: 14, borderTop: "1px solid rgba(0,180,216,0.22)", borderLeft: "1px solid rgba(0,180,216,0.22)" })} />
+        <div style={CORNER_STYLE({ top: 14, right: 14, borderTop: "1px solid rgba(0,180,216,0.22)", borderRight: "1px solid rgba(0,180,216,0.22)" })} />
+        <div style={CORNER_STYLE({ bottom: 14, left: 14, borderBottom: "1px solid rgba(0,180,216,0.22)", borderLeft: "1px solid rgba(0,180,216,0.22)" })} />
+        <div style={CORNER_STYLE({ bottom: 14, right: 14, borderBottom: "1px solid rgba(0,180,216,0.22)", borderRight: "1px solid rgba(0,180,216,0.22)" })} />
+      </div>
+
       <ConfirmModal
         description={pendingConfirm}
         onApprove={onConfirmApprove}
@@ -32,76 +57,86 @@ export default function Dashboard({
         onClose={() => setSettingsOpen(false)}
       />
 
-      {/* Top bar */}
-      <header className="border-b border-hud-border px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-hud-accent/20 border border-hud-accent flex items-center justify-center shadow-glow">
-            <span className="text-hud-glow text-sm font-bold">H</span>
-          </div>
-          <span className="text-hud-glow font-bold tracking-widest text-lg">HORUS</span>
-          <span className="text-hud-muted text-xs tracking-wider">/ AGENTIC ASSISTANT</span>
-        </div>
+      {/* Sphere fills everything */}
+      <div className="absolute inset-0">
+        <NeuralSphere status={status} nodeCount={nodes.length} />
+      </div>
 
-        <div className="flex items-center gap-4">
-          {settings.wake_word_enabled && (
-            <span className="text-xs text-hud-success tracking-widest animate-pulse">
-              ● WAKE WORD ACTIVE
-            </span>
-          )}
-          {!settings.computer_use_enabled && (
-            <span className="text-xs text-hud-danger tracking-widest">
-              COMPUTER USE OFF
-            </span>
-          )}
-          <StatusBar status={status} />
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="text-hud-muted hover:text-hud-accent text-xs tracking-widest border border-hud-border hover:border-hud-accent px-3 py-1 rounded transition-all"
+      {/* Orbital project nodes */}
+      <NodeOrbit nodes={nodes} onRemove={onRemoveNode} onNodeAction={onNodeAction} />
+
+      {/* Right-side floating data panels */}
+      <HudPanels panels={panels ?? []} onDismiss={onDismissPanel} />
+
+      {/* Top-left: wordmark */}
+      <div className="absolute top-4 left-5 z-40 pointer-events-none">
+        <span className="text-hud-glow font-bold tracking-widest text-sm opacity-50">HORUS</span>
+      </div>
+
+      {/* Top-right: status + settings */}
+      <div className="absolute top-4 right-5 flex items-center gap-4 z-10">
+        {status !== "idle" && (
+          <span className="text-xs tracking-widest text-hud-accent uppercase opacity-80 animate-pulse">
+            {status}
+          </span>
+        )}
+        <button
+          onClick={() => setSettingsOpen(true)}
+          className="text-hud-muted hover:text-hud-accent text-xs tracking-widest opacity-40 hover:opacity-100 transition-all"
+        >
+          ⚙
+        </button>
+      </div>
+
+      {/* Conversation feed — draggable window */}
+      <div className="absolute inset-0 pointer-events-none z-10">
+        <div className="pointer-events-auto">
+          <DraggableWindow
+            label="COMM"
+            accentColor="#00b4d8"
+            defaultX={12}
+            defaultY={60}
+            defaultW={272}
+            defaultH={Math.floor(window.innerHeight - 90)}
+            minW={200}
+            minH={200}
+            baseZ={10}
           >
-            SETTINGS
-          </button>
+            <ConversationFeed
+              messages={messages}
+              onSendText={onSendText}
+              onVoiceStart={onVoiceStart}
+              status={status}
+            />
+          </DraggableWindow>
         </div>
-      </header>
+      </div>
 
-      {/* Quick actions */}
-      <QuickActions onSendText={onSendText} disabled={busy} />
+      {/* Bottom-center: current action ticker */}
+      <div className="absolute bottom-6 left-0 right-0 flex justify-center z-10 pointer-events-none">
+        {status !== "idle" && currentAction ? (
+          <span style={{
+            fontSize: "0.52rem",
+            letterSpacing: "0.18em",
+            color: "rgba(0,229,255,0.45)",
+            textTransform: "uppercase",
+          }}>
+            ▶ {currentAction}
+          </span>
+        ) : status === "idle" ? (
+          <span className="text-xs tracking-widest text-hud-muted opacity-20 uppercase">standby</span>
+        ) : null}
+      </div>
 
-      {/* Main grid — 3 columns */}
-      <div className="flex flex-1 overflow-hidden">
-
-        {/* Left: conversation */}
-        <div className="w-80 flex flex-col border-r border-hud-border flex-shrink-0">
-          <ConversationFeed
-            messages={messages}
-            onSendText={onSendText}
-            onVoiceStart={onVoiceStart}
-            status={status}
-          />
-        </div>
-
-        {/* Center: neural sphere */}
-        <div className="flex-1 flex flex-col items-center justify-center bg-hud-bg relative overflow-hidden">
-          <div className="w-full h-full">
-            <NeuralSphere status={status} />
-          </div>
-          {/* Status label below sphere */}
-          <div className="absolute bottom-4 left-0 right-0 flex justify-center">
-            <span className="text-xs tracking-widest text-hud-muted uppercase">
-              {status === "idle" ? "STANDBY" : status.toUpperCase()}
-            </span>
-          </div>
-        </div>
-
-        {/* Right: action log + memory */}
-        <div className="w-80 flex flex-col border-l border-hud-border flex-shrink-0">
-          <div className="flex-1 border-b border-hud-border overflow-hidden">
-            <ActionLog actions={actions} />
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <MemoryPanel memories={memories} />
-          </div>
-        </div>
-
+      {/* Bottom-right: telemetry */}
+      <div style={{
+        position: "absolute", bottom: 20, right: 22,
+        fontSize: "0.46rem", letterSpacing: "0.15em",
+        color: "rgba(0,180,216,0.2)", textAlign: "right",
+        pointerEvents: "none", zIndex: 10, lineHeight: 1.8,
+      }}>
+        <div>SYS · {status.toUpperCase()}</div>
+        <div>NODES · {nodes.length}</div>
       </div>
     </div>
   );

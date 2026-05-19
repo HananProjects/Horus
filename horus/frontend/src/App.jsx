@@ -8,6 +8,8 @@ export default function App() {
   const [status, setStatus] = useState("idle");
   const [actions, setActions] = useState([]);
   const [memories, setMemories] = useState([]);
+  const [nodes, setNodes] = useState([]);
+  const [panels, setPanels] = useState([]);
   const [pendingConfirm, setPendingConfirm] = useState(null);
   const [settings, setSettings] = useState({
     computer_use_enabled: true,
@@ -37,6 +39,13 @@ export default function App() {
         }
       } else if (data.type === "memories") {
         setMemories(data.memories);
+      } else if (data.type === "nodes") {
+        setNodes(data.nodes);
+      } else if (data.type === "panel") {
+        setPanels(prev => {
+          const filtered = prev.filter(p => p.panel_type !== data.panel_type);
+          return [...filtered, { ...data, id: Date.now() }];
+        });
       } else if (data.type === "confirm_action") {
         setPendingConfirm(data.description);
       } else if (data.type === "settings") {
@@ -82,12 +91,30 @@ export default function App() {
     }
   }
 
+  function dismissPanel(id) {
+    setPanels(prev => prev.filter(p => p.id !== id));
+  }
+
+  function removeNode(nodeId) {
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: "remove_node", node_id: nodeId }));
+    }
+  }
+
+  function nodeAction(nodeId, action) {
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: "node_action", node_id: nodeId, action }));
+    }
+  }
+
   return (
     <Dashboard
       messages={messages}
       status={status}
       actions={actions}
       memories={memories}
+      nodes={nodes}
+      panels={panels}
       pendingConfirm={pendingConfirm}
       settings={settings}
       onSendText={sendText}
@@ -96,6 +123,9 @@ export default function App() {
       onConfirmDeny={() => handleConfirm(false)}
       onUpdateSettings={updateSettings}
       onClearMemory={clearMemory}
+      onRemoveNode={removeNode}
+      onNodeAction={nodeAction}
+      onDismissPanel={dismissPanel}
     />
   );
 }

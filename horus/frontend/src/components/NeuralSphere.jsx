@@ -5,6 +5,7 @@ const NODE_COUNT = 180;
 const R = 1.2;
 const CONNECT_DIST = 0.62;
 const TRAVELER_COUNT = 55;
+const MAX_TRAVELERS = 100;
 
 function fibonacciSphere(n, r) {
   const pts = [];
@@ -18,11 +19,13 @@ function fibonacciSphere(n, r) {
   return pts;
 }
 
-export default function NeuralSphere({ status }) {
+export default function NeuralSphere({ status, nodeCount = 0 }) {
   const mountRef = useRef(null);
   const statusRef = useRef(status);
+  const nodeCountRef = useRef(nodeCount);
 
   useEffect(() => { statusRef.current = status; }, [status]);
+  useEffect(() => { nodeCountRef.current = nodeCount; }, [nodeCount]);
 
   useEffect(() => {
     const el = mountRef.current;
@@ -93,7 +96,7 @@ export default function NeuralSphere({ status }) {
     const wireframe = new THREE.Mesh(new THREE.SphereGeometry(R * 1.01, 24, 16), wireMat);
 
     // Traveling particles along connections
-    const travPos = new Float32Array(TRAVELER_COUNT * 3);
+    const travPos = new Float32Array(MAX_TRAVELERS * 3);
     const travGeo = new THREE.BufferGeometry();
     travGeo.setAttribute("position", new THREE.BufferAttribute(travPos, 3));
     const travMat = new THREE.PointsMaterial({
@@ -106,7 +109,7 @@ export default function NeuralSphere({ status }) {
     });
     const travCloud = new THREE.Points(travGeo, travMat);
 
-    const travState = Array.from({ length: TRAVELER_COUNT }, () => ({
+    const travState = Array.from({ length: MAX_TRAVELERS }, () => ({
       pair: linePairs[Math.floor(Math.random() * linePairs.length)],
       t: Math.random(),
       dir: Math.random() < 0.5 ? 1 : -1,
@@ -141,55 +144,92 @@ export default function NeuralSphere({ status }) {
     let raf;
     let clock = 0;
 
+    // Smoothed values for soft blending between states
+    let smoothNOp = 0.75;
+    let smoothLOp = 0.18;
+    let smoothScale = 1.0;
+    let smoothCoreOp = 0.5;
+    let smoothCoreScale = 1.0;
+
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
     function animate() {
       raf = requestAnimationFrame(animate);
       clock += 0.016;
 
       const st = statusRef.current;
+      const nc = nodeCountRef.current;
       const active = st !== "idle";
       const thinking = st === "thinking" || st === "processing";
       const speaking = st === "speaking";
       const listening = st === "listening";
 
-      // Breathing scale
-      const bRate = active ? 2.2 : 1.0;
-      const bAmp = active ? 0.04 : 0.018;
-      group.scale.setScalar(1 + Math.sin(clock * bRate) * bAmp);
+      const complexity = Math.min(nc / 5, 1);
 
-      // Rotation
-      const rSpeed = thinking ? 0.003 : active ? 0.0018 : 0.0006;
+      // Target scale — breathing when idle/thinking, very gentle flutter when speaking
+      let targetScale;
+      if (speaking) {
+        // Slow, low-amplitude mix — just a shimmer, not a bounce
+        const s1 = Math.sin(clock * 3.1) * 0.4;
+        const s2 = Math.sin(clock * 5.3) * 0.35;
+        const s3 = Math.sin(clock * 2.0) * 0.25;
+        const envelope = (s1 + s2 + s3 + 1) / 2;
+        targetScale = 1 + envelope * 0.018; // max ~1.8% change
+      } else {
+        const bRate = active ? 2.2 : 1.0;
+        const bAmp = active ? 0.032 : 0.016;
+        targetScale = 1 + Math.sin(clock * bRate) * bAmp;
+      }
+      smoothScale = lerp(smoothScale, targetScale, 0.06);
+      group.scale.setScalar(smoothScale);
+
+      // Rotation — slow always
+      const rSpeed = thinking ? 0.0025 : active ? 0.0014 : 0.0005;
       group.rotation.y += rSpeed;
       group.rotation.x += rSpeed * 0.28;
 
-      // Node / line opacity driven by state
-      let nOp = 0.78;
-      let lOp = 0.18;
-      if (speaking) {
-        const pulse = (Math.sin(clock * 4) + 1) * 0.5;
-        nOp = 0.65 + pulse * 0.35;
-        lOp = 0.12 + pulse * 0.38;
-      } else if (thinking) {
-        nOp = 0.95;
-        lOp = 0.38;
-      } else if (listening) {
-        nOp = 0.88;
-        lOp = 0.27;
-      }
-      nodeMat.opacity = nOp;
-      lineMat.opacity = lOp;
+      // Target opacities
+      const baseNOp = 0.72 + complexity * 0.18;
+      const baseLOp = 0.16 + complexity * 0.16;
 
-      // Core pulse
-      const cp = (Math.sin(clock * (active ? 2.5 : 1.0)) + 1) * 0.5;
-      coreMat.opacity = 0.45 + cp * 0.55;
-      core.scale.setScalar(1 + cp * (active ? 0.35 : 0.15));
+      let targetNOp = baseNOp;
+      let targetLOp = baseLOp;
+
+      if (speaking) {
+        // Subtle glow rhythm — barely noticeable but present
+        const glow = (Math.sin(clock * 2.8) + 1) * 0.5;
+        targetNOp = baseNOp + glow * 0.08;
+        targetLOp = baseLOp + glow * 0.07;
+      } else if (thinking) {
+        targetNOp = baseNOp + 0.12;
+        targetLOp = baseLOp + 0.14;
+      } else if (listening) {
+        targetNOp = baseNOp + 0.06;
+        targetLOp = baseLOp + 0.07;
+      }
+
+      smoothNOp = lerp(smoothNOp, targetNOp, 0.04);
+      smoothLOp = lerp(smoothLOp, targetLOp, 0.04);
+      nodeMat.opacity = smoothNOp;
+      lineMat.opacity = smoothLOp;
+
+      // Core — soft pulse, barely grows
+      const cpRate = speaking ? 2.8 : active ? 2.0 : 0.9;
+      const targetCoreOp = 0.4 + (Math.sin(clock * cpRate) + 1) * 0.25;
+      const targetCoreScale = 1 + (Math.sin(clock * cpRate) + 1) * 0.05 * (active ? 1.2 : 0.6);
+      smoothCoreOp = lerp(smoothCoreOp, targetCoreOp, 0.05);
+      smoothCoreScale = lerp(smoothCoreScale, targetCoreScale, 0.05);
+      coreMat.opacity = smoothCoreOp;
+      core.scale.setScalar(smoothCoreScale);
 
       // Halo
-      halo.rotation.z += 0.0008;
-      haloMat.opacity = active ? 0.38 : 0.18;
+      halo.rotation.z += 0.0007;
+      haloMat.opacity = lerp(haloMat.opacity, 0.13 + complexity * 0.18 + (active ? 0.07 : 0), 0.03);
 
-      // Travelers
+      // Travelers — more particles as more nodes added
       const tSpeed = thinking ? 0.005 : active ? 0.003 : 0.001;
-      for (let i = 0; i < TRAVELER_COUNT; i++) {
+      const activeTravelers = Math.min(Math.floor(TRAVELER_COUNT * (1 + complexity * 0.8)), MAX_TRAVELERS);
+      for (let i = 0; i < activeTravelers; i++) {
         const s = travState[i];
         s.t += tSpeed * s.dir;
         if (s.t > 1 || s.t < 0) {
