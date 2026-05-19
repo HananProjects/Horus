@@ -2,6 +2,8 @@ horus/backend/venv/
 horus/backend/chroma_data/
 horus/.env
 horus/frontend/node_modules/
+horus/backend/credentials.json
+horus/backend/gmail_token.json
 __pycache__/
 *.pyc
 .DS_Store

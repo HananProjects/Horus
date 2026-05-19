@@ -4,7 +4,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from brain import Brain, _open_path, _read_file, _web_search
-from voice import VoicePipeline
+from voice import VoicePipeline, list_input_devices
 from memory import Memory
 from computer_use import ComputerUseAgent
 import nodes as node_store
@@ -27,8 +27,9 @@ computer = ComputerUseAgent()
 # Global settings
 settings = {
     "computer_use_enabled": True,
-    "wake_word_enabled": False,
+    "wake_word_enabled": True,
     "voice_rate": 185,
+    "mic_device_index": None,
 }
 
 REMEMBER_TRIGGERS = ("remember that", "remember this", "don't forget", "note that", "keep in mind")
@@ -65,6 +66,10 @@ async def send_settings(ws: WebSocket):
     await ws.send_json({"type": "settings", "settings": settings})
 
 
+async def send_devices(ws: WebSocket):
+    await ws.send_json({"type": "devices", "devices": list_input_devices()})
+
+
 def strip_markdown(text: str) -> str:
     text = re.sub(r'\*{1,3}(.*?)\*{1,3}', r'\1', text)
     text = re.sub(r'#{1,6}\s+', '', text)
@@ -84,6 +89,8 @@ def is_computer_use_request(text: str) -> bool:
 # Wake word background loop — broadcasts to all connected clients
 connected_clients: list[WebSocket] = []
 wake_word_task = None
+_voice_lock = asyncio.Lock()
+CONVERSATION_TIMEOUT = 8  # seconds to wait for follow-up before ending conversation
 
 
 async def wake_word_loop():
@@ -123,6 +130,7 @@ async def websocket_endpoint(ws: WebSocket):
     await send_status(ws, "idle")
     await send_memories(ws)
     await send_settings(ws)
+    await send_devices(ws)
     await send_nodes(ws)
 
     current_task = None
@@ -137,12 +145,18 @@ async def websocket_endpoint(ws: WebSocket):
                 confirm_event.set()
 
             elif msg_type == "text":
+                voice.interrupt()
+                if current_task and not current_task.done():
+                    current_task.cancel()
                 user_text = data.get("content", "")
                 current_task = asyncio.create_task(
                     handle_turn(ws, user_text, request_confirmation)
                 )
 
             elif msg_type == "voice_start":
+                voice.interrupt()
+                if current_task and not current_task.done():
+                    current_task.cancel()
                 current_task = asyncio.create_task(
                     handle_voice_turn(ws, request_confirmation)
                 )
@@ -150,6 +164,7 @@ async def websocket_endpoint(ws: WebSocket):
             elif msg_type == "update_settings":
                 new = data.get("settings", {})
                 settings.update({k: v for k, v in new.items() if k in settings})
+                voice.device_index = settings.get("mic_device_index")
                 await send_settings(ws)
 
             elif msg_type == "clear_memory":
@@ -173,14 +188,29 @@ async def websocket_endpoint(ws: WebSocket):
 
 
 async def handle_voice_turn(ws: WebSocket, confirm):
-    await send_status(ws, "listening")
-    await send_action(ws, "Recording audio...")
-    user_text = await asyncio.to_thread(voice.listen)
-    if not user_text:
-        await send_status(ws, "idle")
+    if _voice_lock.locked():
         return
-    await send_message(ws, "user", user_text)
-    await handle_turn(ws, user_text, confirm)
+    async with _voice_lock:
+        try:
+            # First listen: full 30s wait for speech onset
+            await send_status(ws, "listening")
+            await send_action(ws, "Recording audio...")
+            user_text = await asyncio.to_thread(voice.listen)
+
+            while user_text:
+                await send_message(ws, "user", user_text)
+                await handle_turn(ws, user_text, confirm)
+
+                # After responding, keep listening for follow-up
+                await send_status(ws, "listening")
+                await send_action(ws, "Listening...")
+                user_text = await asyncio.to_thread(voice.listen, CONVERSATION_TIMEOUT)
+
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await send_status(ws, "idle")
+            await send_action(ws, "")
 
 
 async def handle_node_action(ws: WebSocket, node_id: int, action: str):
@@ -212,7 +242,7 @@ async def handle_node_action(ws: WebSocket, node_id: int, action: str):
             await send_status(ws, "thinking")
             content = await asyncio.to_thread(_read_file, path)
             prompt = f"Summarize this file for me in a few sentences. Path: {path}\n\n{content[:4000]}"
-            response = await asyncio.to_thread(brain.chat, prompt, [])
+            response, _ = await asyncio.to_thread(brain.chat, prompt, [])
             await send_message(ws, "assistant", response)
             await send_status(ws, "speaking")
             await asyncio.to_thread(voice.speak, strip_markdown(response), settings["voice_rate"])
@@ -229,7 +259,7 @@ async def handle_node_action(ws: WebSocket, node_id: int, action: str):
             await send_status(ws, "thinking")
             results = await asyncio.to_thread(_web_search, query)
             prompt = f"I searched again for '{query}'. Here are the results:\n\n{results}\n\nGive me a brief summary of what's new."
-            response = await asyncio.to_thread(brain.chat, prompt, [])
+            response, _ = await asyncio.to_thread(brain.chat, prompt, [])
             await send_message(ws, "assistant", response)
             await send_status(ws, "speaking")
             await asyncio.to_thread(voice.speak, strip_markdown(response), settings["voice_rate"])
@@ -273,8 +303,10 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
             relevant_memories = memory.retrieve(user_text)
             await send_action(ws, "Calling Claude...")
 
-            response = await asyncio.to_thread(brain.chat, user_text, relevant_memories)
+            response, panels = await asyncio.to_thread(brain.chat, user_text, relevant_memories)
 
+            for panel in panels:
+                await ws.send_json({"type": "panel", **panel})
             await send_message(ws, "assistant", response)
             await send_action(ws, "Storing memory...")
             memory.store(user_text, response)
@@ -286,7 +318,7 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
             await asyncio.to_thread(voice.speak, strip_markdown(response), settings["voice_rate"])
 
     except asyncio.CancelledError:
-        pass
+        raise
     except Exception as e:
         await send_message(ws, "assistant", f"[Error: {e}]")
     finally:

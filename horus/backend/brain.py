@@ -3,18 +3,131 @@ import subprocess
 import anthropic
 from pathlib import Path
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 from ddgs import DDGS
 import nodes as node_store
 import profile as user_profile
+import agents as agent_registry
+import gmail as gmail_module
 
 load_dotenv(Path(__file__).parent / ".env")
+
+
+def _fetch_stock_data(symbol: str) -> dict:
+    try:
+        import requests
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        r = requests.get(url, params={"interval": "1d", "range": "1mo"}, headers=headers, timeout=10)
+        r.raise_for_status()
+        res = r.json()["chart"]["result"][0]
+        meta = res["meta"]
+        closes = [c for c in (res["indicators"]["quote"][0].get("close") or []) if c is not None]
+        price = meta.get("regularMarketPrice") or meta.get("price", 0)
+        prev = meta.get("previousClose") or meta.get("chartPreviousClose", price)
+        change = round(price - prev, 2)
+        pct = round((change / prev * 100) if prev else 0, 2)
+        return {
+            "price": round(price, 2),
+            "change": change,
+            "pct": pct,
+            "currency": meta.get("currency", "USD"),
+            "exchange": meta.get("exchangeName", ""),
+            "closes": closes[-30:],
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _fetch_sports_score(query: str) -> dict:
+    try:
+        import requests
+        leagues = [
+            ("basketball", "nba"),
+            ("football", "nfl"),
+            ("baseball", "mlb"),
+            ("hockey", "nhl"),
+            ("basketball", "mens-college-basketball"),
+        ]
+        query_lower = query.lower()
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+
+        for sport, league in leagues:
+            try:
+                url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard"
+                r = requests.get(url, headers=headers, timeout=8)
+                if r.status_code != 200:
+                    continue
+                data = r.json()
+
+                for event in data.get("events", []):
+                    name = event.get("name", "").lower()
+                    short_name = event.get("shortName", "").lower()
+                    words = [w for w in query_lower.split() if len(w) > 2]
+                    if not any(w in name or w in short_name for w in words):
+                        continue
+
+                    comp = event["competitions"][0]
+                    competitors = comp["competitors"]
+                    home = next((c for c in competitors if c["homeAway"] == "home"), competitors[0])
+                    away = next((c for c in competitors if c["homeAway"] == "away"), competitors[-1])
+                    status = event["status"]
+                    state = status["type"]["state"]
+
+                    series_note = ""
+                    notes = comp.get("notes", [])
+                    if notes:
+                        series_note = notes[0].get("headline", "")
+
+                    return {
+                        "game_id": event["id"],
+                        "sport": sport,
+                        "league": league,
+                        "title": event.get("name", ""),
+                        "home_team": {
+                            "name": home["team"]["displayName"],
+                            "abbrev": home["team"]["abbreviation"],
+                            "logo": home["team"].get("logo", ""),
+                            "score": home.get("score", "0"),
+                            "record": home.get("records", [{}])[0].get("summary", "") if home.get("records") else "",
+                        },
+                        "away_team": {
+                            "name": away["team"]["displayName"],
+                            "abbrev": away["team"]["abbreviation"],
+                            "logo": away["team"].get("logo", ""),
+                            "score": away.get("score", "0"),
+                            "record": away.get("records", [{}])[0].get("summary", "") if away.get("records") else "",
+                        },
+                        "status": "live" if state == "in" else ("final" if state == "post" else "upcoming"),
+                        "status_display": status.get("displayClock", "") if state == "in" else status["type"].get("description", ""),
+                        "period": status.get("period", 0),
+                        "series_summary": series_note,
+                    }
+            except Exception:
+                continue
+
+        return {"error": f"No current game found for '{query}'"}
+    except Exception as e:
+        return {"error": str(e)}
+
 
 SYSTEM_PROMPT = """You are Horus, a personal AI assistant who speaks directly to the user out loud. Your responses are converted to speech, so write exactly as you would speak — natural, clear, and conversational. Never use markdown formatting: no asterisks, no bullet points, no headers, no symbols. Just plain spoken sentences.
 
 Be warm, direct, and human. Get to the point without unnecessary filler. You have tools — use them. Search the web for anything current. Read, write, and manage files when asked. Run commands when needed. Open apps and files. You have full access to Hanan's Windows PC.
 
+You have three specialized agents you can delegate heavy work to using delegate_to_agent:
+- research: Deep web research, fact-finding, news, prices, current events. Use this instead of web_search for anything requiring thorough investigation.
+- code: Writing, editing, debugging, and running code or scripts. Has full file system access.
+- task: Creating reminders, schedules, and to-do organization using Windows tools.
+
+You can call delegate_to_agent multiple times in one response — they run in parallel automatically. Delegate when a task benefits from specialization or when you want things done concurrently. Synthesize agent results into a single spoken response.
+
 The visual interface has a central glowing sphere called "the eye". Workspace nodes branch off it representing things being tracked or worked on. When Hanan says "add this to the eye" or "put that on the eye", use add_workspace_node with the right node_type and metadata. When he says "remove that from the eye" or "take that off the eye", use remove_workspace_node.
+
+You have powerful visual display tools — use them aggressively. Any time Hanan asks about something that has a visual dimension, show it on the eye without being asked. The rule: if he asks about a person, place, product, animal, landmark, news event, movie, car, food, or anything people would want to SEE — call image_search to find the best image, then call show_visual with content_type="image". For stocks and financial data, call show_visual with content_type="stock" directly. For YouTube videos, use content_type="video" with the watch URL. For live sports games, scores, or any game that is in progress or recently played, use content_type="score" with a query like "Spurs Thunder" — this shows a live scoreboard with team logos that auto-updates. This is the whole point — Horus saves him from opening another tab. Never just describe something visual when you can show it.
+
+You have full Gmail access. Use gmail_search to find emails, gmail_read to read them, gmail_trash to delete specific ones, gmail_bulk_trash to clean entire categories, and gmail_send to compose and send. For cleanup tasks, always search first to preview what will be affected, tell Hanan the count, then get confirmation before bulk-trashing. You can extract info from emails, summarize threads, find receipts, check subscriptions — anything inbox-related.
 
 You are constantly learning about Hanan. Whenever a conversation reveals something meaningful — a preference, a habit, a goal, something he dislikes, his communication style, an ongoing project — call update_user_profile immediately. Be specific. Over time this makes you genuinely tailored to him. Don't wait for explicit instructions; pick up on implicit signals too."""
 
@@ -136,10 +249,138 @@ TOOLS = [
             "required": ["node_id"],
         },
     },
+    {
+        "name": "image_search",
+        "description": "Search the web for images and return direct image URLs. Use this whenever you need an image URL before calling show_visual — for people, places, products, news, sports, anything visual.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "What to find an image of, e.g. 'LeBron James', 'Eiffel Tower night', 'NVIDIA RTX 4090'"}
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "show_visual",
+        "description": "Display rich visual content directly on the eye. Use this for ANY request where the user wants to SEE something — stocks, images, YouTube videos, websites, weather, maps, news. Don't just describe it, show it. Use the research agent first if you need to find a URL or image. Then call show_visual to display it.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content_type": {
+                    "type": "string",
+                    "enum": ["stock", "image", "video", "webpage", "score"],
+                    "description": "stock: live price chart. image: display image from URL. video: embed YouTube video. webpage: embed any website. score: live sports scoreboard with team logos and auto-updating score.",
+                },
+                "title": {"type": "string", "description": "Short display title, e.g. 'NVIDIA Corp', 'Weather London', 'Spurs vs Thunder'"},
+                "symbol": {"type": "string", "description": "Ticker symbol for stock type, e.g. 'NVDA', 'AAPL', 'TSLA'"},
+                "url": {"type": "string", "description": "URL for image, video, or webpage types. For YouTube use the watch URL — it will be converted automatically."},
+                "query": {"type": "string", "description": "Search query for score type, e.g. 'Spurs Thunder', 'Lakers Warriors'. Include both team names."},
+            },
+            "required": ["content_type", "title"],
+        },
+    },
+    {
+        "name": "gmail_search",
+        "description": "Search Gmail emails. Supports full Gmail query syntax: from:sender@email.com, to:, subject:keyword, is:unread, is:starred, label:name, has:attachment, older_than:1y, newer_than:7d, category:promotions, category:social, category:updates. Returns list with id, subject, from, date, snippet.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Gmail search query, e.g. 'from:amazon.com', 'subject:invoice older_than:1y', 'is:unread category:promotions'"},
+                "max_results": {"type": "integer", "description": "Max emails to return (default 25, max 500)"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "gmail_read",
+        "description": "Read the full body of a specific email by its ID. Use after gmail_search to read the actual content.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "message_id": {"type": "string", "description": "The email ID from gmail_search results"},
+            },
+            "required": ["message_id"],
+        },
+    },
+    {
+        "name": "gmail_trash",
+        "description": "Move specific emails to trash by their IDs (recoverable). Use after gmail_search to trash selected emails. Always confirm with the user first.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "message_ids": {"type": "array", "items": {"type": "string"}, "description": "List of email IDs to move to trash"},
+            },
+            "required": ["message_ids"],
+        },
+    },
+    {
+        "name": "gmail_bulk_trash",
+        "description": "Move ALL emails matching a query to trash. Perfect for cleaning — delete newsletters, promotions, old emails, etc. First search to preview the count, tell the user, get confirmation, then call this.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Gmail search query — all matching emails will be trashed"},
+                "max_results": {"type": "integer", "description": "Max emails to trash in one go (default 500)"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "gmail_send",
+        "description": "Send an email. Use thread_id to reply to an existing conversation.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string", "description": "Recipient email address"},
+                "subject": {"type": "string", "description": "Email subject line"},
+                "body": {"type": "string", "description": "Plain text email body"},
+                "thread_id": {"type": "string", "description": "Optional thread ID to reply to an existing email thread"},
+            },
+            "required": ["to", "subject", "body"],
+        },
+    },
+    {
+        "name": "delegate_to_agent",
+        "description": "Delegate a subtask to a specialized agent. Call this multiple times in one response to run agents in parallel. Use research for deep web research, code for writing/running code, task for reminders and scheduling.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string",
+                    "enum": ["research", "code", "task"],
+                    "description": "Which specialist: research (web/info), code (write/run code & scripts), task (reminders/scheduling)",
+                },
+                "task": {
+                    "type": "string",
+                    "description": "Specific, detailed task description for the agent.",
+                },
+                "context": {
+                    "type": "string",
+                    "description": "Any extra context the agent needs (user preferences, related info, etc.)",
+                },
+            },
+            "required": ["agent", "task"],
+        },
+    },
 ]
 
 
 # --- Tool implementations ---
+
+def _image_search(query: str) -> str:
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.images(query, max_results=6))
+        if not results:
+            return "No images found."
+        parts = [
+            f"Title: {r.get('title', '')}\nImage URL: {r.get('image', '')}\nSource: {r.get('url', '')}"
+            for r in results if r.get("image")
+        ]
+        return "\n\n".join(parts) if parts else "No usable image URLs found."
+    except Exception as e:
+        return f"Image search failed: {e}"
+
 
 def _web_search(query: str) -> str:
     try:
@@ -227,6 +468,7 @@ def _remove_node(node_id: int) -> str:
 
 TOOL_HANDLERS = {
     "web_search": lambda inp: _web_search(inp["query"]),
+    "image_search": lambda inp: _image_search(inp["query"]),
     "read_file": lambda inp: _read_file(inp["path"]),
     "write_file": lambda inp: _write_file(inp["path"], inp["content"]),
     "list_directory": lambda inp: _list_directory(inp["path"]),
@@ -235,6 +477,11 @@ TOOL_HANDLERS = {
     "add_workspace_node": lambda inp: _add_node(inp["label"], inp.get("node_type", "generic"), inp.get("metadata")),
     "remove_workspace_node": lambda inp: _remove_node(inp["node_id"]),
     "update_user_profile": lambda inp: user_profile.add_item(inp["category"], inp["item"]),
+    "gmail_search": lambda inp: str(gmail_module.search_emails(inp["query"], min(inp.get("max_results", 25), 50))),
+    "gmail_read": lambda inp: str(gmail_module.read_email(inp["message_id"])),
+    "gmail_trash": lambda inp: gmail_module.trash_emails(inp["message_ids"]),
+    "gmail_bulk_trash": lambda inp: gmail_module.bulk_trash(inp["query"], inp.get("max_results", 500)),
+    "gmail_send": lambda inp: gmail_module.send_email(inp["to"], inp["subject"], inp["body"], inp.get("thread_id")),
 }
 
 
@@ -244,7 +491,7 @@ class Brain:
         self.model = "claude-sonnet-4-6"
         self.history: list[dict] = []
 
-    def chat(self, user_text: str, memories: Optional[list] = None) -> str:
+    def chat(self, user_text: str, memories: Optional[list] = None) -> tuple[str, list]:
         memory_block = ""
         if memories:
             memory_block = "\n\n[Relevant memories]\n" + "\n".join(f"- {m}" for m in memories)
@@ -258,7 +505,10 @@ class Brain:
         self.history.append({"role": "user", "content": user_text})
 
         messages = list(self.history)
-        while True:
+        panels: list[dict] = []
+        iterations = 0
+
+        while iterations < 12:
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=1024,
@@ -267,18 +517,80 @@ class Brain:
                 messages=messages,
             )
 
+            iterations += 1
             if response.stop_reason == "tool_use":
                 messages.append({"role": "assistant", "content": response.content})
-                tool_results = []
-                for block in response.content:
-                    if block.type == "tool_use":
-                        handler = TOOL_HANDLERS.get(block.name)
-                        result = handler(block.input) if handler else f"Unknown tool: {block.name}"
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
+                tool_blocks = [b for b in response.content if b.type == "tool_use"]
+
+                # Run all delegate_to_agent calls in parallel, other tools sequentially
+                agent_blocks = [b for b in tool_blocks if b.name == "delegate_to_agent"]
+                agent_results: dict[str, str] = {}
+                if agent_blocks:
+                    with ThreadPoolExecutor(max_workers=len(agent_blocks)) as ex:
+                        future_to_id = {
+                            ex.submit(
+                                agent_registry.run_agent,
+                                b.input["agent"],
+                                b.input["task"],
+                                b.input.get("context", ""),
+                            ): b.id
+                            for b in agent_blocks
+                        }
+                        for future in as_completed(future_to_id):
+                            agent_results[future_to_id[future]] = future.result()
+
+                    # Collect panels for each completed agent call
+                    for block in agent_blocks:
+                        result = agent_results.get(block.id, "")
+                        panels.append({
+                            "panel_type": block.input["agent"],
+                            "title": block.input["task"][:60],
                             "content": result,
                         })
+
+                tool_results = []
+                for block in tool_blocks:
+                    if block.name == "delegate_to_agent":
+                        result = agent_results.get(block.id, "[agent returned no result]")
+                    elif block.name == "show_visual":
+                        inp = block.input
+                        panel_data = {
+                            "panel_type": "visual",
+                            "content_type": inp["content_type"],
+                            "title": inp["title"],
+                        }
+                        if inp["content_type"] == "stock" and inp.get("symbol"):
+                            panel_data["symbol"] = inp["symbol"].upper()
+                            panel_data["data"] = _fetch_stock_data(inp["symbol"].upper())
+                        elif inp["content_type"] == "score":
+                            query = inp.get("query") or inp.get("title", "")
+                            score_data = _fetch_sports_score(query)
+                            panel_data["data"] = score_data
+                            panel_data["game_id"] = score_data.get("game_id", "")
+                            panel_data["sport"] = score_data.get("sport", "basketball")
+                            panel_data["league"] = score_data.get("league", "nba")
+                        elif inp["content_type"] == "video" and inp.get("url"):
+                            url = inp["url"]
+                            # Convert YouTube watch URL to embed URL
+                            if "youtube.com/watch" in url:
+                                vid_id = url.split("v=")[-1].split("&")[0]
+                                url = f"https://www.youtube.com/embed/{vid_id}?autoplay=0"
+                            elif "youtu.be/" in url:
+                                vid_id = url.split("youtu.be/")[-1].split("?")[0]
+                                url = f"https://www.youtube.com/embed/{vid_id}?autoplay=0"
+                            panel_data["url"] = url
+                        elif inp.get("url"):
+                            panel_data["url"] = inp["url"]
+                        panels.append(panel_data)
+                        result = f"Visual displayed: {inp['content_type']} for '{inp['title']}'."
+                    else:
+                        handler = TOOL_HANDLERS.get(block.name)
+                        result = handler(block.input) if handler else f"Unknown tool: {block.name}"
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": result,
+                    })
                 messages.append({"role": "user", "content": tool_results})
             else:
                 break
@@ -295,7 +607,7 @@ class Brain:
         if len(self.history) > 40:
             self.history = self.history[-40:]
 
-        return reply
+        return reply, panels
 
     def reset(self):
         self.history = []

@@ -1,6 +1,8 @@
 import tempfile
 import os
 import sys
+import time
+import threading
 import subprocess
 import numpy as np
 import sounddevice as sd
@@ -14,10 +16,33 @@ except ImportError:
     _REQUESTS_OK = False
 
 SAMPLE_RATE = 16000
-DURATION = 5
 WAKE_DURATION = 2
 WAKE_WORD = "horus"
-SILENCE_THRESHOLD = 0.01
+SILENCE_THRESHOLD = 0.012   # amplitude RMS to consider as speech
+SPEECH_THRESHOLD = 0.025    # louder threshold to trigger speech start
+CHUNK = 1024                # samples per read block (~64ms at 16kHz)
+PRE_ROLL_CHUNKS = 8         # keep ~0.5s before speech detected
+SILENCE_CHUNKS = 22         # ~1.4s of quiet before stopping
+MAX_RECORD_SECONDS = 30
+
+_stop_event = threading.Event()
+
+
+def interrupt():
+    """Stop the current speech immediately."""
+    _stop_event.set()
+
+
+def _run_interruptible(args, env=None):
+    """Run a subprocess and kill it if interrupt() is called."""
+    _stop_event.clear()
+    proc = subprocess.Popen(args, env=env)
+    while proc.poll() is None:
+        if _stop_event.is_set():
+            proc.kill()
+            return
+        time.sleep(0.05)
+
 
 # ElevenLabs config — set these in .env
 _ELEVEN_KEY = os.getenv("ELEVENLABS_API_KEY", "")
@@ -63,8 +88,11 @@ def _speak_elevenlabs(text: str) -> bool:
             "Start-Sleep -Milliseconds ($dur + 300); "
             "$p.Close()"
         )
-        subprocess.run(["powershell", "-Command", ps], check=False)
-        os.unlink(tmp_path)
+        _run_interruptible(["powershell", "-Command", ps])
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
         return True
     except Exception as e:
         print(f"[voice] ElevenLabs error: {e} — falling back to SAPI5")
@@ -81,23 +109,24 @@ def _speak_sapi5(text: str, rate: int = 185):
     )
     env = os.environ.copy()
     env["HORUS_SPEECH"] = text
-    subprocess.run(["powershell", "-Command", ps], env=env, check=False)
+    _run_interruptible(["powershell", "-Command", ps], env=env)
+
+
+def list_input_devices() -> list[dict]:
+    """Return MME input devices only (avoids DirectSound/WASAPI duplicates)."""
+    devices = []
+    for i, d in enumerate(sd.query_devices()):
+        if d["max_input_channels"] > 0 and d["hostapi"] == 0:
+            devices.append({"index": i, "name": d["name"]})
+    return devices
 
 
 class VoicePipeline:
     def __init__(self):
         self.whisper_model = whisper.load_model("base")
+        self.device_index = None  # None = system default
 
-    def _record_and_transcribe(self, duration: int) -> str:
-        audio = sd.rec(
-            int(duration * SAMPLE_RATE),
-            samplerate=SAMPLE_RATE,
-            channels=1,
-            dtype="float32",
-        )
-        sd.wait()
-        audio_np = audio.squeeze()
-
+    def _transcribe(self, audio_np: np.ndarray) -> str:
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             tmp_path = f.name
         wav.write(tmp_path, SAMPLE_RATE, (audio_np * 32767).astype(np.int16))
@@ -105,8 +134,53 @@ class VoicePipeline:
         os.unlink(tmp_path)
         return result["text"].strip()
 
-    def listen(self) -> str:
-        return self._record_and_transcribe(DURATION)
+    def listen(self, max_seconds: int = MAX_RECORD_SECONDS) -> str:
+        """VAD-based recording: waits for speech, stops on silence."""
+        print("[voice] ready — waiting for speech...")
+        pre_roll: list[np.ndarray] = []
+        chunks: list[np.ndarray] = []
+        speech_started = False
+        silence_count = 0
+        max_chunks = (max_seconds * SAMPLE_RATE) // CHUNK
+
+        stream = sd.InputStream(
+            samplerate=SAMPLE_RATE, channels=1, dtype="float32", blocksize=CHUNK,
+            device=self.device_index,
+        )
+        stream.start()
+        try:
+            for _ in range(max_chunks):
+                data, _ = stream.read(CHUNK)
+                amplitude = float(np.abs(data).mean())
+
+                if not speech_started:
+                    pre_roll.append(data.copy())
+                    if len(pre_roll) > PRE_ROLL_CHUNKS:
+                        pre_roll.pop(0)
+                    if amplitude > SPEECH_THRESHOLD:
+                        speech_started = True
+                        chunks.extend(pre_roll)
+                        pre_roll = []
+                        print("[voice] speech detected")
+                else:
+                    chunks.append(data.copy())
+                    if amplitude < SILENCE_THRESHOLD:
+                        silence_count += 1
+                        if silence_count >= SILENCE_CHUNKS:
+                            print("[voice] silence — stopping")
+                            break
+                    else:
+                        silence_count = 0
+        finally:
+            stream.stop()
+            stream.close()
+
+        if not chunks:
+            print("[voice] no speech detected")
+            return ""
+
+        audio_np = np.concatenate(chunks).squeeze()
+        return self._transcribe(audio_np)
 
     def listen_for_wake_word(self) -> bool:
         audio = sd.rec(
@@ -114,18 +188,14 @@ class VoicePipeline:
             samplerate=SAMPLE_RATE,
             channels=1,
             dtype="float32",
+            device=self.device_index,
         )
         sd.wait()
         if np.abs(audio).mean() < SILENCE_THRESHOLD:
             return False
 
         audio_np = audio.squeeze()
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            tmp_path = f.name
-        wav.write(tmp_path, SAMPLE_RATE, (audio_np * 32767).astype(np.int16))
-        result = self.whisper_model.transcribe(tmp_path, language="en")
-        os.unlink(tmp_path)
-        text = result["text"].lower().strip()
+        text = self._transcribe(audio_np).lower()
         print(f"[wake] heard: {text!r}")
         WAKE_VARIANTS = ("horus", "horace", "horas", "harris", "hora", "horse")
         return any(v in text for v in WAKE_VARIANTS)
