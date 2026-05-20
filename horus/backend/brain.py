@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-SYSTEM_PROMPT = """You are Horus, a highly capable personal AI assistant. You are precise, perceptive, and composed — named after the Egyptian god of the sky and protection, you see everything and act with purpose. You have access to the user's computer, persistent memory of past conversations, and the ability to search the web for real-time information.
+SYSTEM_PROMPT = """You are Horus, a highly capable personal AI assistant. You are precise, perceptive, and composed — named after the Egyptian god of the sky and protection, you see everything and act with purpose. You have access to the user's computer, persistent memory of past conversations, the ability to search the web for real-time information, and read/write access to the user's Obsidian knowledge vault.
 
 When the user asks you to do something on their computer, describe what you are about to do before doing it. Always confirm before taking irreversible actions. Keep responses concise — the user will often be listening rather than reading.
 
@@ -23,12 +23,24 @@ class Brain:
         self.model = "claude-sonnet-4-6"
         self.history: list[dict] = []
 
-    def chat(self, user_text: str, memories: Optional[list] = None) -> str:
+    def chat(
+        self,
+        user_text: str,
+        memories: Optional[list] = None,
+        obsidian_notes: Optional[list] = None,
+    ) -> str:
         memory_block = ""
         if memories:
             memory_block = "\n\n[Relevant memories from past conversations]\n" + "\n".join(f"- {m}" for m in memories)
 
-        system = SYSTEM_PROMPT + memory_block
+        obsidian_block = ""
+        if obsidian_notes:
+            parts = []
+            for note in obsidian_notes:
+                parts.append(f"**{note['title']}** ({note['path']}):\n{note['snippet']}")
+            obsidian_block = "\n\n[Relevant notes from Obsidian vault]\n" + "\n\n".join(parts)
+
+        system = SYSTEM_PROMPT + memory_block + obsidian_block
 
         self.history.append({"role": "user", "content": user_text})
 

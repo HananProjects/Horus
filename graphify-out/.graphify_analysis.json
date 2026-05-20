@@ -1,0 +1,313 @@
+{
+  "communities": {
+    "0": [
+      "frontend_index_html",
+      "horus_claude_code_prompt_brain_py",
+      "horus_claude_code_prompt_chromadb",
+      "horus_claude_code_prompt_claude_api",
+      "horus_claude_code_prompt_computer_use_api",
+      "horus_claude_code_prompt_computer_use_py",
+      "horus_claude_code_prompt_elevenlabs",
+      "horus_claude_code_prompt_fastapi_backend",
+      "horus_claude_code_prompt_horus_personality",
+      "horus_claude_code_prompt_horus_project",
+      "horus_claude_code_prompt_main_py",
+      "horus_claude_code_prompt_memory_py",
+      "horus_claude_code_prompt_phase1",
+      "horus_claude_code_prompt_phase2",
+      "horus_claude_code_prompt_phase3",
+      "horus_claude_code_prompt_phase4",
+      "horus_claude_code_prompt_phase5",
+      "horus_claude_code_prompt_porcupine",
+      "horus_claude_code_prompt_pyautogui",
+      "horus_claude_code_prompt_pyttsx3_tts",
+      "horus_claude_code_prompt_react_frontend",
+      "horus_claude_code_prompt_tools_py",
+      "horus_claude_code_prompt_voice_py",
+      "horus_claude_code_prompt_websocket",
+      "horus_claude_code_prompt_whisper_stt",
+      "readme_architecture",
+      "readme_horus_project",
+      "requirements_anthropic",
+      "requirements_chromadb",
+      "requirements_fastapi",
+      "requirements_openai_whisper",
+      "requirements_pillow",
+      "requirements_pyautogui",
+      "requirements_pyttsx3",
+      "requirements_uvicorn",
+      "requirements_websockets"
+    ],
+    "1": [
+      "components_actionlog_actionlog",
+      "components_confirmmodal_confirmmodal",
+      "components_conversationfeed_conversationfeed",
+      "components_dashboard_dashboard",
+      "components_memorypanel_memorypanel",
+      "components_quickactions_actions",
+      "components_quickactions_quickactions",
+      "components_settingspanel_settingspanel",
+      "components_settingspanel_toggle",
+      "components_statusbar_status_config",
+      "components_statusbar_statusbar",
+      "horus_frontend_src_app_jsx",
+      "horus_frontend_src_components_actionlog_jsx",
+      "horus_frontend_src_components_quickactions_jsx",
+      "horus_frontend_src_components_settingspanel_jsx",
+      "horus_frontend_src_components_statusbar_jsx",
+      "horus_frontend_src_index_jsx",
+      "src_app_app",
+      "src_index_root"
+    ],
+    "2": [
+      "backend_main_handle_turn",
+      "backend_main_is_computer_use_request",
+      "backend_main_is_obsidian_save_request",
+      "backend_main_is_obsidian_search_request",
+      "backend_main_parse_note_response",
+      "backend_main_rationale_278",
+      "backend_main_send_action",
+      "backend_main_send_memories",
+      "backend_main_send_message",
+      "backend_main_send_obsidian_event",
+      "backend_main_send_settings",
+      "backend_main_send_status",
+      "backend_main_startup",
+      "backend_main_wake_word_loop",
+      "backend_main_websocket_endpoint",
+      "horus_backend_main_py"
+    ],
+    "3": [
+      "frontend_package_browserslist",
+      "frontend_package_browserslist_development",
+      "frontend_package_browserslist_production",
+      "frontend_package_dependencies",
+      "frontend_package_dependencies_react",
+      "frontend_package_dependencies_react_dom",
+      "frontend_package_dependencies_react_scripts",
+      "frontend_package_name",
+      "frontend_package_private",
+      "frontend_package_scripts",
+      "frontend_package_scripts_build",
+      "frontend_package_scripts_start",
+      "frontend_package_version",
+      "horus_frontend_package_json"
+    ],
+    "4": [
+      "backend_memory_memory",
+      "backend_memory_memory_clear",
+      "backend_memory_memory_get_all",
+      "backend_memory_memory_init",
+      "backend_memory_memory_retrieve",
+      "backend_memory_memory_store",
+      "backend_memory_memory_store_fact",
+      "backend_memory_rationale_26",
+      "backend_memory_rationale_34",
+      "backend_memory_rationale_45",
+      "horus_backend_memory_py"
+    ],
+    "5": [
+      "backend_obsidian_obsidianvault",
+      "backend_obsidian_obsidianvault_all_notes",
+      "backend_obsidian_obsidianvault_append_to_note",
+      "backend_obsidian_obsidianvault_create_note",
+      "backend_obsidian_obsidianvault_init",
+      "backend_obsidian_obsidianvault_list_notes",
+      "backend_obsidian_obsidianvault_read_note",
+      "backend_obsidian_obsidianvault_search",
+      "backend_obsidian_rationale_20",
+      "backend_obsidian_rationale_51",
+      "horus_backend_obsidian_py"
+    ],
+    "6": [
+      "backend_computer_use_computeruseagent",
+      "backend_computer_use_computeruseagent_call_claude",
+      "backend_computer_use_computeruseagent_describe_action",
+      "backend_computer_use_computeruseagent_execute_action",
+      "backend_computer_use_computeruseagent_init",
+      "backend_computer_use_computeruseagent_run_task_async",
+      "backend_computer_use_computeruseagent_screenshot_b64",
+      "horus_backend_computer_use_py"
+    ],
+    "7": [
+      "backend_voice_rationale_41",
+      "backend_voice_voicepipeline",
+      "backend_voice_voicepipeline_init",
+      "backend_voice_voicepipeline_listen",
+      "backend_voice_voicepipeline_listen_for_wake_word",
+      "backend_voice_voicepipeline_record_and_transcribe",
+      "backend_voice_voicepipeline_speak",
+      "horus_backend_voice_py"
+    ],
+    "8": [
+      "horus_claude_code_prompt_actionlog_jsx",
+      "horus_claude_code_prompt_app_jsx",
+      "horus_claude_code_prompt_conversationfeed_jsx",
+      "horus_claude_code_prompt_dashboard_jsx",
+      "horus_claude_code_prompt_memorypanel_jsx",
+      "horus_claude_code_prompt_statusbar_jsx"
+    ],
+    "9": [
+      "backend_brain_brain",
+      "backend_brain_brain_chat",
+      "backend_brain_brain_init",
+      "backend_brain_brain_reset",
+      "horus_backend_brain_py"
+    ],
+    "10": [
+      "horus_claude_code_prompt_sounddevice",
+      "requirements_numpy",
+      "requirements_scipy",
+      "requirements_sounddevice"
+    ],
+    "11": [
+      "claude_settings_local_json",
+      "claude_settings_local_permissions",
+      "claude_settings_local_permissions_allow"
+    ],
+    "12": [
+      "backend_tools_rationale_1",
+      "horus_backend_tools_py"
+    ],
+    "13": [
+      "horus_frontend_tailwind_config_js"
+    ],
+    "14": [
+      "horus_frontend_postcss_config_js"
+    ],
+    "15": [
+      "requirements_python_dotenv"
+    ]
+  },
+  "cohesion": {
+    "0": 0.09047619047619047,
+    "1": 0.10526315789473684,
+    "2": 0.25,
+    "3": 0.14285714285714285,
+    "4": 0.18181818181818182,
+    "5": 0.21818181818181817,
+    "6": 0.2857142857142857,
+    "7": 0.2857142857142857,
+    "8": 0.3333333333333333,
+    "9": 0.4,
+    "10": 0.5,
+    "11": 0.6666666666666666,
+    "12": 1.0,
+    "13": 1.0,
+    "14": 1.0,
+    "15": 1.0
+  },
+  "gods": [
+    {
+      "id": "backend_main_handle_turn",
+      "label": "handle_turn()",
+      "degree": 11
+    },
+    {
+      "id": "horus_claude_code_prompt_horus_project",
+      "label": "Horus Agentic Desktop Assistant Project",
+      "degree": 10
+    },
+    {
+      "id": "components_dashboard_dashboard",
+      "label": "Dashboard()",
+      "degree": 8
+    },
+    {
+      "id": "backend_obsidian_obsidianvault",
+      "label": "ObsidianVault",
+      "degree": 8
+    },
+    {
+      "id": "horus_claude_code_prompt_main_py",
+      "label": "backend/main.py \u2014 FastAPI App & WebSocket Server",
+      "degree": 8
+    },
+    {
+      "id": "backend_memory_memory",
+      "label": "Memory",
+      "degree": 7
+    },
+    {
+      "id": "backend_computer_use_computeruseagent",
+      "label": "ComputerUseAgent",
+      "degree": 7
+    },
+    {
+      "id": "readme_horus_project",
+      "label": "Horus README",
+      "degree": 7
+    },
+    {
+      "id": "backend_voice_voicepipeline",
+      "label": "VoicePipeline",
+      "degree": 6
+    },
+    {
+      "id": "backend_main_websocket_endpoint",
+      "label": "websocket_endpoint()",
+      "degree": 6
+    }
+  ],
+  "surprises": [
+    {
+      "source": "backend/computer_use.py \u2014 Screen Control",
+      "target": "pillow",
+      "source_files": [
+        "horus_claude_code_prompt.md",
+        "horus/backend/requirements.txt"
+      ],
+      "confidence": "INFERRED",
+      "relation": "references",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; peripheral node `pillow` unexpectedly reaches hub `backend/computer_use.py \u2014 Screen Control`"
+    },
+    {
+      "source": "Horus README",
+      "target": "Phase 5 \u2014 Polish",
+      "source_files": [
+        "horus/README.md",
+        "horus_claude_code_prompt.md"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "connects across different repos/directories; peripheral node `Phase 5 \u2014 Polish` unexpectedly reaches hub `Horus README`"
+    },
+    {
+      "source": "sounddevice + numpy Audio Recording",
+      "target": "scipy",
+      "source_files": [
+        "horus_claude_code_prompt.md",
+        "horus/backend/requirements.txt"
+      ],
+      "confidence": "INFERRED",
+      "relation": "references",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories"
+    },
+    {
+      "source": "Horus README",
+      "target": "Horus Agentic Desktop Assistant Project",
+      "source_files": [
+        "horus/README.md",
+        "horus_claude_code_prompt.md"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "connects across different repos/directories"
+    },
+    {
+      "source": "FastAPI Backend",
+      "target": "fastapi",
+      "source_files": [
+        "horus_claude_code_prompt.md",
+        "horus/backend/requirements.txt"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "connects across different repos/directories"
+    }
+  ],
+  "tokens": {
+    "input": 0,
+    "output": 0
+  }
+}

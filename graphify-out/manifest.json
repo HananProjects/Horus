@@ -1,0 +1,107 @@
+{
+  "/Users/hanan/Horus/.claude/settings.local.json": {
+    "mtime": 1779139407.9473455,
+    "ast_hash": "b476f378d9963e14086d2d024713bda1",
+    "semantic_hash": "b476f378d9963e14086d2d024713bda1"
+  },
+  "/Users/hanan/Horus/horus/frontend/tailwind.config.js": {
+    "mtime": 1778717531.60834,
+    "ast_hash": "8d7b47ab8b4f4c69efd94359faee9651",
+    "semantic_hash": "8d7b47ab8b4f4c69efd94359faee9651"
+  },
+  "/Users/hanan/Horus/horus/frontend/package.json": {
+    "mtime": 1778717527.2602878,
+    "ast_hash": "bbbd3ca1476fb7dad3f249ef1e55f750",
+    "semantic_hash": "bbbd3ca1476fb7dad3f249ef1e55f750"
+  },
+  "/Users/hanan/Horus/horus/frontend/postcss.config.js": {
+    "mtime": 1778717583.363718,
+    "ast_hash": "8640f9b2e6475cc3f5b1ff4548925765",
+    "semantic_hash": "8640f9b2e6475cc3f5b1ff4548925765"
+  },
+  "/Users/hanan/Horus/horus/frontend/src/App.jsx": {
+    "mtime": 1778719642.32446,
+    "ast_hash": "f69c187910f416564ba762e100aceac1",
+    "semantic_hash": "f69c187910f416564ba762e100aceac1"
+  },
+  "/Users/hanan/Horus/horus/frontend/src/index.jsx": {
+    "mtime": 1778717538.522158,
+    "ast_hash": "169709c003a5745cb1928dab23edfecc",
+    "semantic_hash": "169709c003a5745cb1928dab23edfecc"
+  },
+  "/Users/hanan/Horus/horus/frontend/src/components/QuickActions.jsx": {
+    "mtime": 1778719624.8007185,
+    "ast_hash": "fa241d45f4d9ae60034e3754ecdd0cff",
+    "semantic_hash": "fa241d45f4d9ae60034e3754ecdd0cff"
+  },
+  "/Users/hanan/Horus/horus/frontend/src/components/StatusBar.jsx": {
+    "mtime": 1778717558.2874343,
+    "ast_hash": "08e4a2341d4f72f0aa6c9afe36d5e5a3",
+    "semantic_hash": "08e4a2341d4f72f0aa6c9afe36d5e5a3"
+  },
+  "/Users/hanan/Horus/horus/frontend/src/components/SettingsPanel.jsx": {
+    "mtime": 1778719617.7015803,
+    "ast_hash": "9a1b86f079bc784fa6715445808b9a80",
+    "semantic_hash": "9a1b86f079bc784fa6715445808b9a80"
+  },
+  "/Users/hanan/Horus/horus/frontend/src/components/MemoryPanel.jsx": {
+    "mtime": 1778717575.800883,
+    "ast_hash": "4f8996dc4e21cd88b2a0e935dd8333e5",
+    "semantic_hash": "4f8996dc4e21cd88b2a0e935dd8333e5"
+  },
+  "/Users/hanan/Horus/horus/frontend/src/components/Dashboard.jsx": {
+    "mtime": 1778719656.8062313,
+    "ast_hash": "feaca9d8728593fdfefa7ec1cd31d194",
+    "semantic_hash": "feaca9d8728593fdfefa7ec1cd31d194"
+  },
+  "/Users/hanan/Horus/horus/frontend/src/components/ConversationFeed.jsx": {
+    "mtime": 1778717569.2388458,
+    "ast_hash": "a9db64e61d016c1f7599b52734348850",
+    "semantic_hash": "a9db64e61d016c1f7599b52734348850"
+  },
+  "/Users/hanan/Horus/horus/frontend/src/components/ConfirmModal.jsx": {
+    "mtime": 1778719066.2561464,
+    "ast_hash": "f6164755f213bf1fd76ea30e232a7fb2",
+    "semantic_hash": "f6164755f213bf1fd76ea30e232a7fb2"
+  },
+  "/Users/hanan/Horus/horus/frontend/src/components/ActionLog.jsx": {
+    "mtime": 1778717572.930438,
+    "ast_hash": "b4553188dcaa520d101d4a728bf0dd14",
+    "semantic_hash": "b4553188dcaa520d101d4a728bf0dd14"
+  },
+  "/Users/hanan/Horus/horus/backend/memory.py": {
+    "mtime": 1778718729.5404484,
+    "ast_hash": "9d04a1d67d649e1990833d00672c5ae9",
+    "semantic_hash": "9d04a1d67d649e1990833d00672c5ae9"
+  },
+  "/Users/hanan/Horus/horus/backend/tools.py": {
+    "mtime": 1779280929.568573,
+    "ast_hash": "db277e05aa83a494813861ae2e9d5568",
+    "semantic_hash": "db277e05aa83a494813861ae2e9d5568"
+  },
+  "/Users/hanan/Horus/horus/backend/computer_use.py": {
+    "mtime": 1778719439.9245286,
+    "ast_hash": "167d65ac8a976de735e3dbd24811e3a4",
+    "semantic_hash": "167d65ac8a976de735e3dbd24811e3a4"
+  },
+  "/Users/hanan/Horus/horus/backend/voice.py": {
+    "mtime": 1778719858.326051,
+    "ast_hash": "0e6e9d22db60456f033f0dab4156e4a5",
+    "semantic_hash": "0e6e9d22db60456f033f0dab4156e4a5"
+  },
+  "/Users/hanan/Horus/horus/backend/brain.py": {
+    "mtime": 1779280393.7312758,
+    "ast_hash": "b96f082d129cb555ba84612c93fd0c08",
+    "semantic_hash": "b96f082d129cb555ba84612c93fd0c08"
+  },
+  "/Users/hanan/Horus/horus/backend/obsidian.py": {
+    "mtime": 1779280378.6930299,
+    "ast_hash": "3b857d669163bdceef6795bf79b644d3",
+    "semantic_hash": "3b857d669163bdceef6795bf79b644d3"
+  },
+  "/Users/hanan/Horus/horus/backend/main.py": {
+    "mtime": 1779280919.0606325,
+    "ast_hash": "da1b4abf9641be72fe2add1fedc1e5e5",
+    "semantic_hash": "da1b4abf9641be72fe2add1fedc1e5e5"
+  }
+}

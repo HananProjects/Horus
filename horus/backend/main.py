@@ -6,6 +6,7 @@ from brain import Brain
 from voice import VoicePipeline
 from memory import Memory
 from computer_use import ComputerUseAgent
+from obsidian import ObsidianVault
 
 app = FastAPI(title="Horus")
 
@@ -21,6 +22,7 @@ brain = Brain()
 voice = VoicePipeline()
 memory = Memory()
 computer = ComputerUseAgent()
+obsidian = ObsidianVault()
 
 # Global settings
 settings = {
@@ -36,6 +38,19 @@ COMPUTER_USE_TRIGGERS = (
     "search google", "search for ", "go to ", "navigate to ",
     "click on ", "click ", "type ", "scroll ",
     "take a screenshot", "screenshot",
+)
+
+OBSIDIAN_SAVE_TRIGGERS = (
+    "save to obsidian", "save this to obsidian", "add to obsidian",
+    "create a note", "write a note", "make a note",
+    "save in obsidian", "put in obsidian", "add this to my notes",
+    "note this down", "jot this down",
+)
+
+OBSIDIAN_SEARCH_TRIGGERS = (
+    "search my notes", "search obsidian", "in my notes",
+    "from my notes", "my obsidian", "look in my notes",
+    "what do my notes say", "check my notes", "my vault",
 )
 
 
@@ -64,6 +79,20 @@ def is_computer_use_request(text: str) -> bool:
         return False
     lower = text.lower()
     return any(trigger in lower for trigger in COMPUTER_USE_TRIGGERS)
+
+
+def is_obsidian_save_request(text: str) -> bool:
+    lower = text.lower()
+    return any(trigger in lower for trigger in OBSIDIAN_SAVE_TRIGGERS)
+
+
+def is_obsidian_search_request(text: str) -> bool:
+    lower = text.lower()
+    return any(trigger in lower for trigger in OBSIDIAN_SEARCH_TRIGGERS)
+
+
+async def send_obsidian_event(ws: WebSocket, event: str, data: dict):
+    await ws.send_json({"type": "obsidian", "event": event, **data})
 
 
 # Wake word background loop — broadcasts to all connected clients
@@ -180,12 +209,52 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
             )
             await send_message(ws, "assistant", result)
             await asyncio.to_thread(voice.speak, result, settings["voice_rate"])
+
+        elif is_obsidian_save_request(user_text):
+            await send_action(ws, "Saving to Obsidian vault...")
+            # Ask Claude to generate a title + clean note body
+            format_prompt = (
+                f"The user said: \"{user_text}\"\n\n"
+                "Generate a concise Obsidian note from this. "
+                "Reply with exactly two lines:\n"
+                "TITLE: <the note title>\n"
+                "BODY:\n<the note body in markdown>"
+            )
+            raw = await asyncio.to_thread(brain.chat, format_prompt)
+            title, body = _parse_note_response(raw, user_text)
+            rel_path = await asyncio.to_thread(obsidian.create_note, title, body)
+            reply = f"Note saved to Obsidian: **{rel_path}**"
+            await send_message(ws, "assistant", reply)
+            await send_obsidian_event(ws, "note_created", {"path": rel_path, "title": title})
+            await asyncio.to_thread(voice.speak, f"Note saved: {title}", settings["voice_rate"])
+
+        elif is_obsidian_search_request(user_text):
+            await send_action(ws, "Searching Obsidian vault...")
+            results = await asyncio.to_thread(obsidian.search, user_text)
+            if results:
+                await send_obsidian_event(ws, "search_results", {"results": results})
+            relevant_memories = memory.retrieve(user_text)
+            response = await asyncio.to_thread(
+                brain.chat, user_text, relevant_memories, results or None
+            )
+            await send_message(ws, "assistant", response)
+            memory.store(user_text, response)
+            await send_memories(ws)
+            await send_status(ws, "speaking")
+            await asyncio.to_thread(voice.speak, response, settings["voice_rate"])
+
         else:
             await send_action(ws, "Retrieving relevant memories...")
             relevant_memories = memory.retrieve(user_text)
-            await send_action(ws, "Calling Claude...")
 
-            response = await asyncio.to_thread(brain.chat, user_text, relevant_memories)
+            # Always do a passive vault search so Claude has note context
+            await send_action(ws, "Searching Obsidian vault...")
+            vault_notes = await asyncio.to_thread(obsidian.search, user_text)
+
+            await send_action(ws, "Calling Claude...")
+            response = await asyncio.to_thread(
+                brain.chat, user_text, relevant_memories, vault_notes or None
+            )
 
             await send_message(ws, "assistant", response)
             await send_action(ws, "Storing memory...")
@@ -203,3 +272,20 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
     finally:
         await send_status(ws, "idle")
         await send_action(ws, "")
+
+
+def _parse_note_response(raw: str, fallback_title: str) -> tuple[str, str]:
+    """Extract TITLE and BODY from Claude's note-formatting response."""
+    lines = raw.strip().splitlines()
+    title = fallback_title[:60]
+    body_lines = []
+    in_body = False
+    for line in lines:
+        if line.startswith("TITLE:"):
+            title = line.removeprefix("TITLE:").strip()
+        elif line.startswith("BODY:"):
+            in_body = True
+        elif in_body:
+            body_lines.append(line)
+    body = "\n".join(body_lines).strip() or raw
+    return title, body
