@@ -1,5 +1,7 @@
 import asyncio
 import subprocess
+from datetime import datetime, timedelta
+from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -9,6 +11,7 @@ from memory import Memory
 from computer_use import ComputerUseAgent
 from obsidian import ObsidianVault
 from wiki import WikiManager
+from learner import HorusLearner, LEARNING_INTERVAL_HOURS
 
 app = FastAPI(title="Horus")
 
@@ -26,6 +29,7 @@ memory = Memory()
 computer = ComputerUseAgent()
 obsidian = ObsidianVault()
 wiki = WikiManager(obsidian)
+learner = HorusLearner(wiki, obsidian)
 
 # Global settings
 settings = {
@@ -66,6 +70,48 @@ GRAPH_QUERY_TRIGGERS = (
 )
 
 GRAPH_JSON = "/Users/hanan/Horus/graphify-out/graph.json"
+LAST_SEEN_PATH = Path.home() / ".horus_last_seen"
+
+
+def _load_last_seen() -> datetime:
+    try:
+        return datetime.fromtimestamp(float(LAST_SEEN_PATH.read_text().strip()))
+    except Exception:
+        return datetime.now() - timedelta(hours=24)
+
+
+def _save_last_seen():
+    LAST_SEEN_PATH.write_text(str(datetime.now().timestamp()))
+
+
+async def _send_startup_brief(ws: WebSocket, last_seen: datetime):
+    """If learning logs exist since last_seen, summarize and send them."""
+    horus_dir = obsidian.horus_dir
+    logs = []
+    for path in sorted(horus_dir.glob("Horus Learning Log*.md")):
+        try:
+            if datetime.fromtimestamp(path.stat().st_mtime) > last_seen:
+                logs.append(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+    if not logs:
+        return
+    combined = "\n\n---\n\n".join(logs[-5:])
+    delta = datetime.now() - last_seen
+    away_str = (
+        f"{int(delta.total_seconds() // 3600)} hours"
+        if delta.total_seconds() >= 3600
+        else f"{int(delta.total_seconds() // 60)} minutes"
+    )
+    summary = await asyncio.to_thread(
+        learner._call,
+        "You are Horus, a personal AI assistant giving a concise wake-up brief.",
+        f"You learned the following while Hanan was away ({away_str}):\n\n{combined}\n\n"
+        "Give a 2-3 sentence summary of the most interesting things you discovered. "
+        "Be direct and specific — no filler phrases. Speak in first person.",
+    )
+    if summary:
+        await send_message(ws, "assistant", f"**While you were away** ({away_str} ago):\n\n{summary}")
 
 
 async def send_status(ws: WebSocket, status: str):
@@ -128,6 +174,24 @@ def _run_graphify_query(question: str) -> str | None:
 # Wake word background loop — broadcasts to all connected clients
 connected_clients: list[WebSocket] = []
 wake_word_task = None
+learning_task = None
+
+
+async def learning_loop():
+    """Autonomous learning cycle — runs every LEARNING_INTERVAL_HOURS hours."""
+    while True:
+        await asyncio.sleep(LEARNING_INTERVAL_HOURS * 3600)
+        try:
+            discoveries = await learner.run_cycle()
+            if discoveries and connected_clients:
+                payload = {"type": "learning_update", "discoveries": discoveries}
+                for ws in connected_clients:
+                    try:
+                        await ws.send_json(payload)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
 
 async def wake_word_loop():
@@ -146,8 +210,9 @@ async def wake_word_loop():
 
 @app.on_event("startup")
 async def startup():
-    global wake_word_task
+    global wake_word_task, learning_task
     wake_word_task = asyncio.create_task(wake_word_loop())
+    learning_task = asyncio.create_task(learning_loop())
 
 
 @app.websocket("/ws")
@@ -164,9 +229,13 @@ async def websocket_endpoint(ws: WebSocket):
         await confirm_event.wait()
         return confirm_result["approved"]
 
+    last_seen = _load_last_seen()
+    _save_last_seen()
+
     await send_status(ws, "idle")
     await send_memories(ws)
     await send_settings(ws)
+    await _send_startup_brief(ws, last_seen)
 
     current_task = None
 

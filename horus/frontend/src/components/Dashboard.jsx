@@ -6,11 +6,12 @@ import MemoryPanel from "./MemoryPanel";
 import ConfirmModal from "./ConfirmModal";
 import SettingsPanel from "./SettingsPanel";
 import QuickActions from "./QuickActions";
+import LearningLog from "./LearningLog";
 
 export default function Dashboard({
-  messages, status, actions, memories, pendingConfirm, settings,
+  messages, status, actions, memories, pendingConfirm, settings, learningUpdates,
   onSendText, onVoiceStart, onConfirmApprove, onConfirmDeny,
-  onUpdateSettings, onClearMemory,
+  onUpdateSettings, onClearMemory, onClearLearning,
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const busy = status !== "idle";
@@ -61,6 +62,9 @@ export default function Dashboard({
           </button>
         </div>
       </header>
+
+      {/* Learning discoveries banner */}
+      <LearningLog updates={learningUpdates} onClear={onClearLearning} />
 
       {/* Quick actions */}
       <QuickActions onSendText={onSendText} disabled={busy} />

@@ -9,6 +9,7 @@ export default function App() {
   const [actions, setActions] = useState([]);
   const [memories, setMemories] = useState([]);
   const [pendingConfirm, setPendingConfirm] = useState(null);
+  const [learningUpdates, setLearningUpdates] = useState([]);
   const [settings, setSettings] = useState({
     computer_use_enabled: true,
     wake_word_enabled: false,
@@ -43,6 +44,11 @@ export default function App() {
         setSettings(data.settings);
       } else if (data.type === "wake_word") {
         startVoice();
+      } else if (data.type === "learning_update") {
+        setLearningUpdates((prev) => [
+          { discoveries: data.discoveries, ts: Date.now() },
+          ...prev,
+        ].slice(0, 20));
       }
     };
 
@@ -90,12 +96,14 @@ export default function App() {
       memories={memories}
       pendingConfirm={pendingConfirm}
       settings={settings}
+      learningUpdates={learningUpdates}
       onSendText={sendText}
       onVoiceStart={startVoice}
       onConfirmApprove={() => handleConfirm(true)}
       onConfirmDeny={() => handleConfirm(false)}
       onUpdateSettings={updateSettings}
       onClearMemory={clearMemory}
+      onClearLearning={() => setLearningUpdates([])}
     />
   );
 }
