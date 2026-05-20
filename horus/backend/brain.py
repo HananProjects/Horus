@@ -28,6 +28,7 @@ class Brain:
         user_text: str,
         memories: Optional[list] = None,
         obsidian_notes: Optional[list] = None,
+        graph_context: Optional[str] = None,
     ) -> str:
         memory_block = ""
         if memories:
@@ -40,7 +41,11 @@ class Brain:
                 parts.append(f"**{note['title']}** ({note['path']}):\n{note['snippet']}")
             obsidian_block = "\n\n[Relevant notes from Obsidian vault]\n" + "\n\n".join(parts)
 
-        system = SYSTEM_PROMPT + memory_block + obsidian_block
+        graph_block = ""
+        if graph_context:
+            graph_block = f"\n\n[Knowledge graph context — token-compressed from codebase]\n{graph_context}"
+
+        system = SYSTEM_PROMPT + memory_block + obsidian_block + graph_block
 
         self.history.append({"role": "user", "content": user_text})
 

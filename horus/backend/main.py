@@ -1,4 +1,5 @@
 import asyncio
+import subprocess
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,6 +8,7 @@ from voice import VoicePipeline
 from memory import Memory
 from computer_use import ComputerUseAgent
 from obsidian import ObsidianVault
+from wiki import WikiManager
 
 app = FastAPI(title="Horus")
 
@@ -23,6 +25,7 @@ voice = VoicePipeline()
 memory = Memory()
 computer = ComputerUseAgent()
 obsidian = ObsidianVault()
+wiki = WikiManager(obsidian)
 
 # Global settings
 settings = {
@@ -52,6 +55,17 @@ OBSIDIAN_SEARCH_TRIGGERS = (
     "from my notes", "my obsidian", "look in my notes",
     "what do my notes say", "check my notes", "my vault",
 )
+
+# Triggers that suggest a question about the Horus codebase itself
+GRAPH_QUERY_TRIGGERS = (
+    "how does horus", "how does the", "explain horus", "explain the",
+    "what does horus", "where is", "how is horus", "horus architecture",
+    "how does brain", "how does memory", "how does voice", "how does obsidian",
+    "how does computer use", "how does websocket", "how does the backend",
+    "show me the code", "what functions", "what modules",
+)
+
+GRAPH_JSON = "/Users/hanan/Horus/graphify-out/graph.json"
 
 
 async def send_status(ws: WebSocket, status: str):
@@ -91,8 +105,24 @@ def is_obsidian_search_request(text: str) -> bool:
     return any(trigger in lower for trigger in OBSIDIAN_SEARCH_TRIGGERS)
 
 
+def is_graph_query(text: str) -> bool:
+    lower = text.lower()
+    return any(trigger in lower for trigger in GRAPH_QUERY_TRIGGERS)
+
+
 async def send_obsidian_event(ws: WebSocket, event: str, data: dict):
     await ws.send_json({"type": "obsidian", "event": event, **data})
+
+
+def _run_graphify_query(question: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["graphify", "query", question, "--graph", GRAPH_JSON, "--budget", "1500"],
+            capture_output=True, text=True, timeout=20,
+        )
+        return result.stdout.strip() or None
+    except Exception:
+        return None
 
 
 # Wake word background loop — broadcasts to all connected clients
@@ -230,7 +260,7 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
 
         elif is_obsidian_search_request(user_text):
             await send_action(ws, "Searching Obsidian vault...")
-            results = await asyncio.to_thread(obsidian.search, user_text)
+            results = await asyncio.to_thread(obsidian.search, user_text, 5)
             if results:
                 await send_obsidian_event(ws, "search_results", {"results": results})
             relevant_memories = memory.retrieve(user_text)
@@ -247,19 +277,28 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
             await send_action(ws, "Retrieving relevant memories...")
             relevant_memories = memory.retrieve(user_text)
 
-            # Always do a passive vault search so Claude has note context
+            # Semantic vault search — only injects notes above relevance threshold
             await send_action(ws, "Searching Obsidian vault...")
             vault_notes = await asyncio.to_thread(obsidian.search, user_text)
 
+            # Graph query for codebase questions — token-compressed context
+            graph_context = None
+            if is_graph_query(user_text):
+                await send_action(ws, "Querying knowledge graph...")
+                graph_context = await asyncio.to_thread(_run_graphify_query, user_text)
+
             await send_action(ws, "Calling Claude...")
             response = await asyncio.to_thread(
-                brain.chat, user_text, relevant_memories, vault_notes or None
+                brain.chat, user_text, relevant_memories, vault_notes or None, graph_context
             )
 
             await send_message(ws, "assistant", response)
             await send_action(ws, "Storing memory...")
             memory.store(user_text, response)
             await send_memories(ws)
+
+            # Background wiki ingest — compiles insights into Obsidian wiki pages
+            asyncio.create_task(asyncio.to_thread(wiki.ingest, user_text, response))
 
             await send_status(ws, "speaking")
             await send_action(ws, "Speaking response...")
