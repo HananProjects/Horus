@@ -1,17 +1,19 @@
 import asyncio
+import re
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from brain import Brain
-from voice import VoicePipeline
+from brain import Brain, _open_path, _read_file, _web_search
+from voice import VoicePipeline, list_input_devices
 from memory import Memory
 from computer_use import ComputerUseAgent
 from obsidian import ObsidianVault
 from wiki import WikiManager
 from learner import HorusLearner, LEARNING_INTERVAL_HOURS
+import nodes as node_store
 
 app = FastAPI(title="Horus")
 
@@ -34,8 +36,9 @@ learner = HorusLearner(wiki, obsidian)
 # Global settings
 settings = {
     "computer_use_enabled": True,
-    "wake_word_enabled": False,
+    "wake_word_enabled": True,
     "voice_rate": 185,
+    "mic_device_index": None,
 }
 
 REMEMBER_TRIGGERS = ("remember that", "remember this", "don't forget", "note that", "keep in mind")
@@ -60,17 +63,57 @@ OBSIDIAN_SEARCH_TRIGGERS = (
     "what do my notes say", "check my notes", "my vault",
 )
 
-# Triggers that suggest a question about the Horus codebase itself
 GRAPH_QUERY_TRIGGERS = (
     "how does horus", "how does the", "explain horus", "explain the",
     "what does horus", "where is", "how is horus", "horus architecture",
     "how does brain", "how does memory", "how does voice", "how does obsidian",
-    "how does computer use", "how does websocket", "how does the backend",
     "show me the code", "what functions", "what modules",
 )
 
 GRAPH_JSON = "/Users/hanan/Horus/graphify-out/graph.json"
 LAST_SEEN_PATH = Path.home() / ".horus_last_seen"
+CONVERSATION_TIMEOUT = 8
+
+
+# ── helpers ────────────────────────────────────────────────────────────────
+
+def strip_markdown(text: str) -> str:
+    text = re.sub(r'\*{1,3}(.*?)\*{1,3}', r'\1', text)
+    text = re.sub(r'#{1,6}\s+', '', text)
+    text = re.sub(r'`{1,3}.*?`{1,3}', '', text, flags=re.DOTALL)
+    text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+    return text.strip()
+
+
+def is_computer_use_request(text: str) -> bool:
+    if not settings["computer_use_enabled"]:
+        return False
+    lower = text.lower()
+    return any(trigger in lower for trigger in COMPUTER_USE_TRIGGERS)
+
+
+def is_obsidian_save_request(text: str) -> bool:
+    return any(t in text.lower() for t in OBSIDIAN_SAVE_TRIGGERS)
+
+
+def is_obsidian_search_request(text: str) -> bool:
+    return any(t in text.lower() for t in OBSIDIAN_SEARCH_TRIGGERS)
+
+
+def is_graph_query(text: str) -> bool:
+    return any(t in text.lower() for t in GRAPH_QUERY_TRIGGERS)
+
+
+def _run_graphify_query(question: str):
+    try:
+        result = subprocess.run(
+            ["graphify", "query", question, "--graph", GRAPH_JSON, "--budget", "1500"],
+            capture_output=True, text=True, timeout=20,
+        )
+        return result.stdout.strip() or None
+    except Exception:
+        return None
 
 
 def _load_last_seen() -> datetime:
@@ -84,8 +127,51 @@ def _save_last_seen():
     LAST_SEEN_PATH.write_text(str(datetime.now().timestamp()))
 
 
+def _parse_note_response(raw: str, fallback_title: str) -> tuple:
+    lines = raw.strip().splitlines()
+    title = fallback_title[:60]
+    body_lines = []
+    in_body = False
+    for line in lines:
+        if line.startswith("TITLE:"):
+            title = line.removeprefix("TITLE:").strip()
+        elif line.startswith("BODY:"):
+            in_body = True
+        elif in_body:
+            body_lines.append(line)
+    body = "\n".join(body_lines).strip() or raw
+    return title, body
+
+
+# ── WebSocket senders ──────────────────────────────────────────────────────
+
+async def send_status(ws: WebSocket, status: str):
+    await ws.send_json({"type": "status", "status": status})
+
+async def send_message(ws: WebSocket, role: str, content: str):
+    await ws.send_json({"type": "message", "role": role, "content": content})
+
+async def send_action(ws: WebSocket, action: str):
+    await ws.send_json({"type": "action", "action": action})
+
+async def send_memories(ws: WebSocket):
+    await ws.send_json({"type": "memories", "memories": memory.get_all()})
+
+async def send_nodes(ws: WebSocket):
+    await ws.send_json({"type": "nodes", "nodes": node_store.load()})
+
+async def send_settings(ws: WebSocket):
+    await ws.send_json({"type": "settings", "settings": settings})
+
+async def send_devices(ws: WebSocket):
+    await ws.send_json({"type": "devices", "devices": list_input_devices()})
+
+async def send_obsidian_event(ws: WebSocket, event: str, data: dict):
+    await ws.send_json({"type": "obsidian", "event": event, **data})
+
+
 async def _send_startup_brief(ws: WebSocket, last_seen: datetime):
-    """If learning logs exist since last_seen, summarize and send them."""
+    """If learning logs exist since last_seen, summarize and send on connect."""
     horus_dir = obsidian.horus_dir
     logs = []
     for path in sorted(horus_dir.glob("Horus Learning Log*.md")):
@@ -105,93 +191,19 @@ async def _send_startup_brief(ws: WebSocket, last_seen: datetime):
     )
     summary = await asyncio.to_thread(
         learner._call,
-        "You are Horus, a personal AI assistant giving a concise wake-up brief.",
+        "You are Horus, giving a concise wake-up brief to Hanan.",
         f"You learned the following while Hanan was away ({away_str}):\n\n{combined}\n\n"
         "Give a 2-3 sentence summary of the most interesting things you discovered. "
-        "Be direct and specific — no filler phrases. Speak in first person.",
+        "Be direct and specific. Speak in first person as Horus.",
     )
     if summary:
         await send_message(ws, "assistant", f"**While you were away** ({away_str} ago):\n\n{summary}")
 
 
-async def send_status(ws: WebSocket, status: str):
-    await ws.send_json({"type": "status", "status": status})
+# ── background loops ───────────────────────────────────────────────────────
 
-
-async def send_message(ws: WebSocket, role: str, content: str):
-    await ws.send_json({"type": "message", "role": role, "content": content})
-
-
-async def send_action(ws: WebSocket, action: str):
-    await ws.send_json({"type": "action", "action": action})
-
-
-async def send_memories(ws: WebSocket):
-    await ws.send_json({"type": "memories", "memories": memory.get_all()})
-
-
-async def send_settings(ws: WebSocket):
-    await ws.send_json({"type": "settings", "settings": settings})
-
-
-def is_computer_use_request(text: str) -> bool:
-    if not settings["computer_use_enabled"]:
-        return False
-    lower = text.lower()
-    return any(trigger in lower for trigger in COMPUTER_USE_TRIGGERS)
-
-
-def is_obsidian_save_request(text: str) -> bool:
-    lower = text.lower()
-    return any(trigger in lower for trigger in OBSIDIAN_SAVE_TRIGGERS)
-
-
-def is_obsidian_search_request(text: str) -> bool:
-    lower = text.lower()
-    return any(trigger in lower for trigger in OBSIDIAN_SEARCH_TRIGGERS)
-
-
-def is_graph_query(text: str) -> bool:
-    lower = text.lower()
-    return any(trigger in lower for trigger in GRAPH_QUERY_TRIGGERS)
-
-
-async def send_obsidian_event(ws: WebSocket, event: str, data: dict):
-    await ws.send_json({"type": "obsidian", "event": event, **data})
-
-
-def _run_graphify_query(question: str) -> str | None:
-    try:
-        result = subprocess.run(
-            ["graphify", "query", question, "--graph", GRAPH_JSON, "--budget", "1500"],
-            capture_output=True, text=True, timeout=20,
-        )
-        return result.stdout.strip() or None
-    except Exception:
-        return None
-
-
-# Wake word background loop — broadcasts to all connected clients
 connected_clients: list[WebSocket] = []
-wake_word_task = None
-learning_task = None
-
-
-async def learning_loop():
-    """Autonomous learning cycle — runs every LEARNING_INTERVAL_HOURS hours."""
-    while True:
-        await asyncio.sleep(LEARNING_INTERVAL_HOURS * 3600)
-        try:
-            discoveries = await learner.run_cycle()
-            if discoveries and connected_clients:
-                payload = {"type": "learning_update", "discoveries": discoveries}
-                for ws in connected_clients:
-                    try:
-                        await ws.send_json(payload)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+_voice_lock = asyncio.Lock()
 
 
 async def wake_word_loop():
@@ -208,12 +220,29 @@ async def wake_word_loop():
                     pass
 
 
+async def learning_loop():
+    while True:
+        await asyncio.sleep(LEARNING_INTERVAL_HOURS * 3600)
+        try:
+            discoveries = await learner.run_cycle()
+            if discoveries and connected_clients:
+                payload = {"type": "learning_update", "discoveries": discoveries}
+                for ws in connected_clients:
+                    try:
+                        await ws.send_json(payload)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+
 @app.on_event("startup")
 async def startup():
-    global wake_word_task, learning_task
-    wake_word_task = asyncio.create_task(wake_word_loop())
-    learning_task = asyncio.create_task(learning_loop())
+    asyncio.create_task(wake_word_loop())
+    asyncio.create_task(learning_loop())
 
+
+# ── WebSocket endpoint ─────────────────────────────────────────────────────
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
@@ -235,6 +264,8 @@ async def websocket_endpoint(ws: WebSocket):
     await send_status(ws, "idle")
     await send_memories(ws)
     await send_settings(ws)
+    await send_devices(ws)
+    await send_nodes(ws)
     await _send_startup_brief(ws, last_seen)
 
     current_task = None
@@ -249,12 +280,18 @@ async def websocket_endpoint(ws: WebSocket):
                 confirm_event.set()
 
             elif msg_type == "text":
+                voice.interrupt()
+                if current_task and not current_task.done():
+                    current_task.cancel()
                 user_text = data.get("content", "")
                 current_task = asyncio.create_task(
                     handle_turn(ws, user_text, request_confirmation)
                 )
 
             elif msg_type == "voice_start":
+                voice.interrupt()
+                if current_task and not current_task.done():
+                    current_task.cancel()
                 current_task = asyncio.create_task(
                     handle_voice_turn(ws, request_confirmation)
                 )
@@ -262,6 +299,7 @@ async def websocket_endpoint(ws: WebSocket):
             elif msg_type == "update_settings":
                 new = data.get("settings", {})
                 settings.update({k: v for k, v in new.items() if k in settings})
+                voice.device_index = settings.get("mic_device_index")
                 await send_settings(ws)
 
             elif msg_type == "clear_memory":
@@ -269,21 +307,110 @@ async def websocket_endpoint(ws: WebSocket):
                 await send_memories(ws)
                 await send_message(ws, "assistant", "Memory cleared.")
 
+            elif msg_type == "remove_node":
+                node_store.remove(data.get("node_id"))
+                await send_nodes(ws)
+
+            elif msg_type == "node_action":
+                current_task = asyncio.create_task(
+                    handle_node_action(ws, data.get("node_id"), data.get("action"))
+                )
+
+            elif msg_type == "dismiss_panel":
+                pass  # frontend handles panel dismissal locally
+
     except WebSocketDisconnect:
         connected_clients.remove(ws)
         if current_task:
             current_task.cancel()
 
 
+# ── turn handlers ──────────────────────────────────────────────────────────
+
 async def handle_voice_turn(ws: WebSocket, confirm):
-    await send_status(ws, "listening")
-    await send_action(ws, "Recording audio...")
-    user_text = await asyncio.to_thread(voice.listen)
-    if not user_text:
-        await send_status(ws, "idle")
+    if _voice_lock.locked():
         return
-    await send_message(ws, "user", user_text)
-    await handle_turn(ws, user_text, confirm)
+    async with _voice_lock:
+        try:
+            await send_status(ws, "listening")
+            await send_action(ws, "Recording audio...")
+            user_text = await asyncio.to_thread(voice.listen)
+
+            while user_text:
+                await send_message(ws, "user", user_text)
+                await handle_turn(ws, user_text, confirm)
+                await send_status(ws, "listening")
+                await send_action(ws, "Listening...")
+                user_text = await asyncio.to_thread(voice.listen, CONVERSATION_TIMEOUT)
+
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await send_status(ws, "idle")
+            await send_action(ws, "")
+
+
+async def handle_node_action(ws: WebSocket, node_id: int, action: str):
+    all_nodes = node_store.load()
+    node = next((n for n in all_nodes if n["id"] == node_id), None)
+    if not node:
+        await send_message(ws, "assistant", "Node not found.")
+        return
+
+    meta = node.get("metadata") or {}
+    path = meta.get("path", "")
+    url = meta.get("url", "")
+    query = meta.get("query", node["label"])
+
+    try:
+        if action == "remove":
+            node_store.remove(node_id)
+            await send_nodes(ws)
+
+        elif action in ("open", "launch", "play", "preview"):
+            target = path or url or meta.get("name", node["label"])
+            result = await asyncio.to_thread(_open_path, target)
+            await send_action(ws, result)
+
+        elif action == "summarize":
+            if not path:
+                await send_message(ws, "assistant", f"No file path stored for {node['label']}.")
+                return
+            await send_status(ws, "thinking")
+            content = await asyncio.to_thread(_read_file, path)
+            prompt = f"Summarize this file in a few sentences. Path: {path}\n\n{content[:4000]}"
+            response, _ = await asyncio.to_thread(brain.chat, prompt, [])
+            await send_message(ws, "assistant", response)
+            await send_status(ws, "speaking")
+            await asyncio.to_thread(voice.speak, strip_markdown(response), settings["voice_rate"])
+
+        elif action == "read_aloud":
+            if not path:
+                await send_message(ws, "assistant", f"No file path stored for {node['label']}.")
+                return
+            await send_status(ws, "speaking")
+            content = await asyncio.to_thread(_read_file, path)
+            await asyncio.to_thread(voice.speak, content[:3000], settings["voice_rate"])
+
+        elif action == "search_again":
+            await send_status(ws, "thinking")
+            results = await asyncio.to_thread(_web_search, query)
+            prompt = f"I searched again for '{query}'. Here are the results:\n\n{results}\n\nGive me a brief summary of what's new."
+            response, _ = await asyncio.to_thread(brain.chat, prompt, [])
+            await send_message(ws, "assistant", response)
+            await send_status(ws, "speaking")
+            await asyncio.to_thread(voice.speak, strip_markdown(response), settings["voice_rate"])
+
+        elif action == "complete":
+            node_store.remove(node_id)
+            await send_nodes(ws)
+            await send_message(ws, "assistant", f"Marked '{node['label']}' as complete.")
+
+    except Exception as e:
+        await send_message(ws, "assistant", f"[Error: {e}]")
+    finally:
+        await send_status(ws, "idle")
+        await send_action(ws, "")
 
 
 async def handle_turn(ws: WebSocket, user_text: str, confirm):
@@ -307,22 +434,19 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
                 confirm_cb=confirm,
             )
             await send_message(ws, "assistant", result)
-            await asyncio.to_thread(voice.speak, result, settings["voice_rate"])
+            await asyncio.to_thread(voice.speak, strip_markdown(result), settings["voice_rate"])
 
         elif is_obsidian_save_request(user_text):
             await send_action(ws, "Saving to Obsidian vault...")
-            # Ask Claude to generate a title + clean note body
             format_prompt = (
                 f"The user said: \"{user_text}\"\n\n"
-                "Generate a concise Obsidian note from this. "
-                "Reply with exactly two lines:\n"
-                "TITLE: <the note title>\n"
-                "BODY:\n<the note body in markdown>"
+                "Generate a concise Obsidian note. Reply with exactly:\n"
+                "TITLE: <the note title>\nBODY:\n<the note body in markdown>"
             )
-            raw = await asyncio.to_thread(brain.chat, format_prompt)
+            raw, _ = await asyncio.to_thread(brain.chat, format_prompt)
             title, body = _parse_note_response(raw, user_text)
             rel_path = await asyncio.to_thread(obsidian.create_note, title, body)
-            reply = f"Note saved to Obsidian: **{rel_path}**"
+            reply = f"Note saved to Obsidian: {rel_path}"
             await send_message(ws, "assistant", reply)
             await send_obsidian_event(ws, "note_created", {"path": rel_path, "title": title})
             await asyncio.to_thread(voice.speak, f"Note saved: {title}", settings["voice_rate"])
@@ -333,67 +457,53 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
             if results:
                 await send_obsidian_event(ws, "search_results", {"results": results})
             relevant_memories = memory.retrieve(user_text)
-            response = await asyncio.to_thread(
+            response, panels = await asyncio.to_thread(
                 brain.chat, user_text, relevant_memories, results or None
             )
+            for panel in panels:
+                await ws.send_json({"type": "panel", **panel})
             await send_message(ws, "assistant", response)
             memory.store(user_text, response)
             await send_memories(ws)
             await send_status(ws, "speaking")
-            await asyncio.to_thread(voice.speak, response, settings["voice_rate"])
+            await asyncio.to_thread(voice.speak, strip_markdown(response), settings["voice_rate"])
 
         else:
             await send_action(ws, "Retrieving relevant memories...")
             relevant_memories = memory.retrieve(user_text)
 
-            # Semantic vault search — only injects notes above relevance threshold
             await send_action(ws, "Searching Obsidian vault...")
             vault_notes = await asyncio.to_thread(obsidian.search, user_text)
 
-            # Graph query for codebase questions — token-compressed context
             graph_context = None
             if is_graph_query(user_text):
                 await send_action(ws, "Querying knowledge graph...")
                 graph_context = await asyncio.to_thread(_run_graphify_query, user_text)
 
             await send_action(ws, "Calling Claude...")
-            response = await asyncio.to_thread(
+            response, panels = await asyncio.to_thread(
                 brain.chat, user_text, relevant_memories, vault_notes or None, graph_context
             )
 
+            for panel in panels:
+                await ws.send_json({"type": "panel", **panel})
             await send_message(ws, "assistant", response)
             await send_action(ws, "Storing memory...")
             memory.store(user_text, response)
             await send_memories(ws)
+            await send_nodes(ws)
 
-            # Background wiki ingest — compiles insights into Obsidian wiki pages
+            # Background wiki ingest and self-learning
             asyncio.create_task(asyncio.to_thread(wiki.ingest, user_text, response))
 
             await send_status(ws, "speaking")
             await send_action(ws, "Speaking response...")
-            await asyncio.to_thread(voice.speak, response, settings["voice_rate"])
+            await asyncio.to_thread(voice.speak, strip_markdown(response), settings["voice_rate"])
 
     except asyncio.CancelledError:
-        pass
+        raise
     except Exception as e:
         await send_message(ws, "assistant", f"[Error: {e}]")
     finally:
         await send_status(ws, "idle")
         await send_action(ws, "")
-
-
-def _parse_note_response(raw: str, fallback_title: str) -> tuple[str, str]:
-    """Extract TITLE and BODY from Claude's note-formatting response."""
-    lines = raw.strip().splitlines()
-    title = fallback_title[:60]
-    body_lines = []
-    in_body = False
-    for line in lines:
-        if line.startswith("TITLE:"):
-            title = line.removeprefix("TITLE:").strip()
-        elif line.startswith("BODY:"):
-            in_body = True
-        elif in_body:
-            body_lines.append(line)
-    body = "\n".join(body_lines).strip() or raw
-    return title, body

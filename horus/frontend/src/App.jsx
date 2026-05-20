@@ -8,24 +8,36 @@ export default function App() {
   const [status, setStatus] = useState("idle");
   const [actions, setActions] = useState([]);
   const [memories, setMemories] = useState([]);
+  const [nodes, setNodes] = useState([]);
+  const [edges, setEdges] = useState([]);
+  const [panels, setPanels] = useState([]);
   const [pendingConfirm, setPendingConfirm] = useState(null);
+  const [micDevices, setMicDevices] = useState([]);
   const [learningUpdates, setLearningUpdates] = useState([]);
   const [settings, setSettings] = useState({
     computer_use_enabled: true,
-    wake_word_enabled: false,
+    wake_word_enabled: true,
     voice_rate: 185,
+    mic_device_index: null,
   });
   const ws = useRef(null);
 
   useEffect(() => {
     connect();
-    return () => ws.current?.close();
+    return () => {
+      if (ws.current) {
+        ws.current.onclose = null;
+        ws.current.close();
+      }
+    };
   }, []);
 
   function connect() {
-    ws.current = new WebSocket(WS_URL);
+    const socket = new WebSocket(WS_URL);
+    ws.current = socket;
 
-    ws.current.onmessage = (e) => {
+    socket.onmessage = (e) => {
+      if (ws.current !== socket) return;
       const data = JSON.parse(e.data);
 
       if (data.type === "status") {
@@ -38,10 +50,26 @@ export default function App() {
         }
       } else if (data.type === "memories") {
         setMemories(data.memories);
+      } else if (data.type === "nodes") {
+        setNodes(data.nodes || []);
+        setEdges(data.edges || []);
+      } else if (data.type === "panel") {
+        setPanels(prev => {
+          const panelKey = p => {
+            if (p.panel_type !== "visual") return p.panel_type;
+            if (p.content_type === "card") return `card_${p.title}`;
+            return `visual_${p.content_type}`;
+          };
+          const incomingKey = panelKey({ ...data, panel_type: data.panel_type });
+          const filtered = prev.filter(p => panelKey(p) !== incomingKey);
+          return [...filtered, { ...data, id: Date.now() }];
+        });
       } else if (data.type === "confirm_action") {
         setPendingConfirm(data.description);
       } else if (data.type === "settings") {
         setSettings(data.settings);
+      } else if (data.type === "devices") {
+        setMicDevices(data.devices);
       } else if (data.type === "wake_word") {
         startVoice();
       } else if (data.type === "learning_update") {
@@ -52,7 +80,10 @@ export default function App() {
       }
     };
 
-    ws.current.onclose = () => setTimeout(connect, 2000);
+    socket.onclose = () => {
+      if (ws.current !== socket) return;
+      setTimeout(connect, 2000);
+    };
   }
 
   function sendText(text) {
@@ -88,21 +119,54 @@ export default function App() {
     }
   }
 
+  function dismissPanel(id) {
+    setPanels(prev => {
+      const panel = prev.find(p => p.id === id);
+      if (panel && ws.current?.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({
+          type: "dismiss_panel",
+          content_type: panel.content_type || "",
+          title: panel.title || "",
+        }));
+      }
+      return prev.filter(p => p.id !== id);
+    });
+  }
+
+  function removeNode(nodeId) {
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: "remove_node", node_id: nodeId }));
+    }
+  }
+
+  function nodeAction(nodeId, action) {
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: "node_action", node_id: nodeId, action }));
+    }
+  }
+
   return (
     <Dashboard
       messages={messages}
       status={status}
       actions={actions}
       memories={memories}
+      nodes={nodes}
+      edges={edges}
+      panels={panels}
       pendingConfirm={pendingConfirm}
       settings={settings}
-      learningUpdates={learningUpdates}
       onSendText={sendText}
       onVoiceStart={startVoice}
       onConfirmApprove={() => handleConfirm(true)}
       onConfirmDeny={() => handleConfirm(false)}
+      micDevices={micDevices}
       onUpdateSettings={updateSettings}
       onClearMemory={clearMemory}
+      onRemoveNode={removeNode}
+      onNodeAction={nodeAction}
+      onDismissPanel={dismissPanel}
+      learningUpdates={learningUpdates}
       onClearLearning={() => setLearningUpdates([])}
     />
   );

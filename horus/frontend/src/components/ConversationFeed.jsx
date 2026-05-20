@@ -19,51 +19,42 @@ export default function ConversationFeed({ messages, onSendText, onVoiceStart, s
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 py-2 border-b border-hud-border text-xs text-hud-muted tracking-widest">
-        CONVERSATION
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {messages.length === 0 && (
-          <div className="text-hud-muted text-sm text-center mt-12 opacity-50">
-            Awaiting input...
-          </div>
-        )}
+      {/* Messages — fade at top */}
+      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-5 scrollbar-hide"
+        style={{ maskImage: "linear-gradient(to bottom, transparent 0%, black 18%)" }}>
         {messages.map((msg, i) => (
           <div
             key={i}
             className={`flex flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}
           >
-            <span className="text-xs text-hud-muted tracking-wider">
-              {msg.role === "user" ? "HANAN" : "HORUS"}
+            <span className="text-xs tracking-widest opacity-30 text-hud-muted">
+              {msg.role === "user" ? "YOU" : "HORUS"}
             </span>
             <div
-              className={`max-w-lg px-4 py-3 rounded text-sm leading-relaxed ${
+              className={`max-w-xs px-3 py-2 rounded text-sm leading-relaxed ${
                 msg.role === "user"
-                  ? "bg-hud-accent2/20 border border-hud-accent2 text-hud-text"
-                  : "bg-hud-panel border border-hud-border text-hud-glow shadow-glow"
+                  ? "text-hud-text opacity-70"
+                  : "text-hud-glow opacity-90"
               }`}
             >
               {msg.content}
-              {msg.role === "assistant" && <span className="animate-blink ml-1">_</span>}
             </div>
           </div>
         ))}
         <div ref={bottomRef} />
       </div>
 
-      {/* Input bar */}
-      <div className="border-t border-hud-border px-4 py-3">
-        <form onSubmit={handleSubmit} className="flex gap-2">
+      {/* Input bar — minimal, no border box */}
+      <div className="px-4 py-4">
+        <form onSubmit={handleSubmit} className="flex gap-2 items-center">
           <button
             type="button"
             onClick={onVoiceStart}
             disabled={status !== "idle"}
-            className={`px-3 py-2 rounded border text-xs tracking-wider transition-all ${
+            className={`text-xs tracking-widest transition-all px-2 py-1 rounded ${
               isListening
-                ? "border-hud-success text-hud-success animate-pulse-glow"
-                : "border-hud-border text-hud-muted hover:border-hud-accent hover:text-hud-accent"
+                ? "text-hud-success animate-pulse"
+                : "text-hud-muted opacity-50 hover:opacity-100 hover:text-hud-accent"
             }`}
           >
             {isListening ? "● REC" : "MIC"}
@@ -72,14 +63,14 @@ export default function ConversationFeed({ messages, onSendText, onVoiceStart, s
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Type a message..."
-            className="flex-1 bg-hud-panel border border-hud-border rounded px-3 py-2 text-sm text-hud-text placeholder-hud-muted focus:outline-none focus:border-hud-accent"
+            placeholder="say something..."
+            className="flex-1 bg-transparent border-b border-hud-border focus:border-hud-accent outline-none text-sm text-hud-text placeholder-hud-muted py-1 transition-colors"
           />
           <button
             type="submit"
-            className="px-4 py-2 bg-hud-accent2/20 border border-hud-accent text-hud-accent text-xs tracking-wider rounded hover:bg-hud-accent/20 transition-all"
+            className="text-xs tracking-widest text-hud-muted hover:text-hud-accent opacity-50 hover:opacity-100 transition-all px-2"
           >
-            SEND
+            →
           </button>
         </form>
       </div>

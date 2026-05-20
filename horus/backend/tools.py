@@ -37,28 +37,4 @@ TOOLS = [
             "required": ["fact"],
         },
     },
-    {
-        "name": "search_obsidian_notes",
-        "description": "Search the user's Obsidian vault for notes matching a query.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Keywords to search for"},
-            },
-            "required": ["query"],
-        },
-    },
-    {
-        "name": "create_obsidian_note",
-        "description": "Create a new note in the user's Obsidian vault.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "title": {"type": "string", "description": "Note title"},
-                "content": {"type": "string", "description": "Note body in markdown"},
-                "folder": {"type": "string", "description": "Subfolder within vault (optional, defaults to Horus/)"},
-            },
-            "required": ["title", "content"],
-        },
-    },
 ]

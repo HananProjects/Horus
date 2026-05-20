@@ -25,7 +25,7 @@ function Toggle({ label, description, value, onChange }) {
   );
 }
 
-export default function SettingsPanel({ open, settings, onUpdateSettings, onClearMemory, onClose }) {
+export default function SettingsPanel({ open, settings, micDevices = [], onUpdateSettings, onClearMemory, onClose }) {
   if (!open) return null;
 
   function update(key, value) {
@@ -63,6 +63,33 @@ export default function SettingsPanel({ open, settings, onUpdateSettings, onClea
           />
 
           <div className="mt-6 text-xs text-hud-muted tracking-widest mb-3">VOICE</div>
+
+          {micDevices.length > 0 && (
+            <div className="py-3 border-b border-hud-border">
+              <div className="text-xs text-hud-text tracking-wide mb-2">Microphone</div>
+              <select
+                value={settings.mic_device_index ?? ""}
+                onChange={(e) => update("mic_device_index", e.target.value === "" ? null : Number(e.target.value))}
+                style={{
+                  width: "100%",
+                  background: "rgba(5,10,15,0.9)",
+                  border: "1px solid rgba(0,180,216,0.2)",
+                  color: "#caf0f8",
+                  fontSize: "0.65rem",
+                  padding: "5px 8px",
+                  letterSpacing: "0.04em",
+                  outline: "none",
+                  cursor: "pointer",
+                }}
+              >
+                <option value="">System Default</option>
+                {micDevices.map(d => (
+                  <option key={d.index} value={d.index}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="py-3">
             <div className="flex justify-between text-xs mb-2">
               <span className="text-hud-text">Speed</span>
