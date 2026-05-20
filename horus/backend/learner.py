@@ -15,6 +15,7 @@ from datetime import datetime
 
 import anthropic
 from dotenv import load_dotenv
+from self_coder import SelfCoder
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -35,6 +36,7 @@ class HorusLearner:
         self.wiki = wiki
         self.vault = vault
         self._client = anthropic.Anthropic()
+        self._self_coder = SelfCoder(vault)
 
     # ── public ──────────────────────────────────────────────────────────────
 
@@ -45,6 +47,10 @@ class HorusLearner:
         discoveries += await self._fill_wiki_gaps()
         discoveries += await self._check_current_topics()
         discoveries += await self._discover_and_install_skills()
+
+        # Self-coding phase — apply safe code improvements from discoveries
+        coding_results = await self._self_coder.evolve(discoveries)
+        discoveries += coding_results
 
         if discoveries:
             ts = datetime.now().strftime("%Y-%m-%d %H:%M")
