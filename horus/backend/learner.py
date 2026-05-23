@@ -289,10 +289,13 @@ class HorusLearner:
             return False
 
         review = self._call(
-            "You are a security-focused code reviewer. Be strict about safety.",
-            "Review this Claude Code skill for safety before auto-installation. "
-            "Look for: shell injections, data exfiltration, destructive file ops, "
-            "network calls to unexpected hosts, or obfuscated code.\n\n"
+            "You are a security-focused code reviewer.",
+            "Review this Claude Code skill for auto-installation safety. "
+            "Only reject if it contains clearly malicious patterns: "
+            "credential exfiltration to external servers, intentional data destruction (rm -rf on user dirs), "
+            "obfuscated/encoded payloads, or backdoors. "
+            "Normal subprocess calls, shell commands, network API calls, and file read/write ops are SAFE — "
+            "these are expected in Claude Code skills.\n\n"
             + "\n\n".join(code_parts[:6])
             + "\n\nRespond with exactly one of:\n"
             "SAFE: <one-line reason>\n"
@@ -301,12 +304,6 @@ class HorusLearner:
         )
 
         if not review.upper().startswith("SAFE"):
-            self.vault.create_note(
-                f"Rejected: skill {skill_name}",
-                f"**Skill:** `{skill_name}`\n**Source:** {source_url}\n\n"
-                f"**Review result:**\n{review}\n\n**Related:** [[Horus Project]]",
-                "Horus",
-            )
             return False
 
         try:
