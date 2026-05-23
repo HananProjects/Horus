@@ -23,6 +23,8 @@ WIKI_PAGES = {
     "Horus Project":   "Horus assistant features, architecture decisions, bugs, roadmap",
     "Goals and Values":"Short and long-term goals, core values, motivations, priorities in life",
     "Learning and Growth": "Topics Hanan is actively learning, books being read, courses, skills being developed",
+    "Employment Timeline": "Confirmed graduation date, target employment start date, offer deadlines, onboarding dates, relocation plans",
+    "Companies of Interest": "Detailed notes on specific companies Hanan is targeting — product scope, tech stack, team size, culture, why they're appealing, current hiring status",
 }
 
 _INGEST_PROMPT = """\
