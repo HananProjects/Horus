@@ -221,8 +221,9 @@ async def wake_word_loop():
 
 
 async def learning_loop():
+    # Short delay so the app finishes starting up, then run immediately
+    await asyncio.sleep(30)
     while True:
-        await asyncio.sleep(LEARNING_INTERVAL_HOURS * 3600)
         try:
             discoveries = await learner.run_cycle()
             if discoveries and connected_clients:
@@ -234,6 +235,7 @@ async def learning_loop():
                         pass
         except Exception:
             pass
+        await asyncio.sleep(LEARNING_INTERVAL_HOURS * 3600)
 
 
 @app.on_event("startup")
@@ -316,6 +318,9 @@ async def websocket_endpoint(ws: WebSocket):
                     handle_node_action(ws, data.get("node_id"), data.get("action"))
                 )
 
+            elif msg_type == "stop_speaking":
+                voice.stop_speaking()
+                await send_status(ws, "idle")
             elif msg_type == "dismiss_panel":
                 pass  # frontend handles panel dismissal locally
 

@@ -216,16 +216,15 @@ Hard rules:
             pass
 
         self.vault.create_note(
-            f"Self-Code Applied — {ts}",
-            f"**File:** `{rel_path}`\n**Change:** {description}",
+            description[:70].strip(),
+            f"**File:** `{rel_path}`\n**Change:** {description}\n\n**Related:** [[Horus Project]]",
             "Horus",
         )
         return True
 
     def _log_rejection(self, rel_path: str, description: str, reason: str):
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
         self.vault.create_note(
-            f"Self-Code Rejected — {ts}",
-            f"**File:** `{rel_path}`\n**Proposed:** {description}\n**Reason:** {reason}",
+            f"Rejected: {description[:55].strip()}",
+            f"**File:** `{rel_path}`\n**Proposed:** {description}\n**Reason:** {reason}\n\n**Related:** [[Horus Project]]",
             "Horus",
         )

@@ -23,7 +23,7 @@ const CORNER_STYLE = (pos) => ({
 export default function Dashboard({
   messages, status, actions, memories, nodes, edges, panels, pendingConfirm, settings, micDevices,
   learningUpdates, onClearLearning,
-  onSendText, onVoiceStart, onConfirmApprove, onConfirmDeny,
+  onSendText, onVoiceStart, onStopSpeaking, onConfirmApprove, onConfirmDeny,
   onUpdateSettings, onClearMemory, onRemoveNode, onNodeAction, onDismissPanel,
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -116,6 +116,7 @@ export default function Dashboard({
               messages={messages}
               onSendText={onSendText}
               onVoiceStart={onVoiceStart}
+              onStopSpeaking={onStopSpeaking}
               status={status}
             />
           </DraggableWindow>

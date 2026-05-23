@@ -15,9 +15,8 @@
     <key>StartInterval</key>
     <integer>21600</integer>
 
-    <!-- Also run immediately when loaded -->
     <key>RunAtLoad</key>
-    <false/>
+    <true/>
 
     <key>StandardOutPath</key>
     <string>/tmp/horus-learner.log</string>

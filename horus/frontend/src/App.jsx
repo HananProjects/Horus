@@ -99,6 +99,12 @@ export default function App() {
     }
   }
 
+  function stopSpeaking() {
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: "stop_speaking" }));
+    }
+  }
+
   function handleConfirm(approved) {
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: "confirm_response", approved }));
@@ -158,6 +164,7 @@ export default function App() {
       settings={settings}
       onSendText={sendText}
       onVoiceStart={startVoice}
+      onStopSpeaking={stopSpeaking}
       onConfirmApprove={() => handleConfirm(true)}
       onConfirmDeny={() => handleConfirm(false)}
       micDevices={micDevices}

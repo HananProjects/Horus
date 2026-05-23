@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
-export default function ConversationFeed({ messages, onSendText, onVoiceStart, status }) {
+export default function ConversationFeed({ messages, onSendText, onVoiceStart, onStopSpeaking, status }) {
   const bottomRef = useRef(null);
   const [input, setInput] = useState("");
 
@@ -16,6 +16,7 @@ export default function ConversationFeed({ messages, onSendText, onVoiceStart, s
   }
 
   const isListening = status === "listening";
+  const isSpeaking = status === "speaking";
 
   return (
     <div className="flex flex-col h-full">
@@ -47,18 +48,28 @@ export default function ConversationFeed({ messages, onSendText, onVoiceStart, s
       {/* Input bar — minimal, no border box */}
       <div className="px-4 py-4">
         <form onSubmit={handleSubmit} className="flex gap-2 items-center">
-          <button
-            type="button"
-            onClick={onVoiceStart}
-            disabled={status !== "idle"}
-            className={`text-xs tracking-widest transition-all px-2 py-1 rounded ${
-              isListening
-                ? "text-hud-success animate-pulse"
-                : "text-hud-muted opacity-50 hover:opacity-100 hover:text-hud-accent"
-            }`}
-          >
-            {isListening ? "● REC" : "MIC"}
-          </button>
+          {isSpeaking ? (
+            <button
+              type="button"
+              onClick={onStopSpeaking}
+              className="text-xs tracking-widest transition-all px-2 py-1 rounded text-red-400 animate-pulse hover:text-red-300"
+            >
+              ■ STOP
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onVoiceStart}
+              disabled={status !== "idle"}
+              className={`text-xs tracking-widest transition-all px-2 py-1 rounded ${
+                isListening
+                  ? "text-hud-success animate-pulse"
+                  : "text-hud-muted opacity-50 hover:opacity-100 hover:text-hud-accent"
+              }`}
+            >
+              {isListening ? "● REC" : "MIC"}
+            </button>
+          )}
           <input
             type="text"
             value={input}

@@ -15,13 +15,29 @@ from datetime import datetime
 
 import anthropic
 from dotenv import load_dotenv
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 from self_coder import SelfCoder
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 SKILLS_DIR = Path.home() / ".claude" / "skills"
 LEARNING_INTERVAL_HOURS = 6
+
+_DISCOVERY_PREFIXES = (
+    "Filled wiki gap: ", "Updated knowledge: ",
+    "Installed new skill: ", "Updated skill: ", "Self-coded: ",
+)
+
+# Keywords → wiki page links. Order matters: first match wins per discovery.
+_WIKI_LINK_MAP = [
+    (("interview", "tenstorrent", "two dots", "offer", "pipeline"), "[[Interview Prep]]"),
+    (("application", "apply", "applied", "company", "hiring", "recruit"), "[[Applications Pipeline]]"),
+    (("job", "career", "employment", "full-time", "new grad"), "[[Job Search]]"),
+    (("claude", "anthropic", "model", "api", "skill", "github"), "[[Technical Skills]]"),
+    (("learn", "course", "study", "growth", "read"), "[[Learning and Growth]]"),
+    (("horus", "backend", "frontend", "self-cod", "daemon"), "[[Horus Project]]"),
+    (("goal", "value", "priority", "life", "personal"), "[[Goals and Values]]"),
+]
 
 # Topics Horus proactively stays current on
 _WATCH_TOPICS = [
@@ -56,13 +72,28 @@ class HorusLearner:
 
         if discoveries:
             ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-            body = "\n".join(f"- {d}" for d in discoveries)
-            await asyncio.to_thread(
-                self.vault.create_note,
-                f"Horus Learning Log {ts}",
-                f"## Learning cycle — {ts}\n\n{body}",
-                "Horus",
-            )
+
+            # Derive a specific title from the most meaningful discovery
+            title_src = discoveries[0]
+            for prefix in _DISCOVERY_PREFIXES:
+                title_src = title_src.replace(prefix, "")
+            title = title_src[:70].strip()
+
+            # Find which wiki pages this cycle touched
+            all_text = " ".join(discoveries).lower()
+            links = []
+            seen = set()
+            for keywords, link in _WIKI_LINK_MAP:
+                if link not in seen and any(k in all_text for k in keywords):
+                    links.append(link)
+                    seen.add(link)
+
+            body_lines = "\n".join(f"- {d}" for d in discoveries)
+            body = f"## {ts}\n\n{body_lines}"
+            if links:
+                body += f"\n\n**Related:** {' '.join(links)}"
+
+            await asyncio.to_thread(self.vault.create_note, title, body, "Horus")
 
         return discoveries
 
@@ -117,11 +148,11 @@ class HorusLearner:
 
         discoveries = []
         for q in questions:
+            search_results = await asyncio.to_thread(self._search, q)
             answer = await asyncio.to_thread(
                 self._call,
                 "You are a concise research assistant writing for a personal knowledge base.",
-                f"Research and answer this question:\n{q}",
-                True,
+                f"Search results:\n{search_results}\n\nUsing the above, answer:\n{q}",
             )
             if answer and len(answer) > 80:
                 await asyncio.to_thread(self.wiki.ingest, q, answer)
@@ -134,13 +165,13 @@ class HorusLearner:
     async def _check_current_topics(self) -> list[str]:
         discoveries = []
         for topic in _WATCH_TOPICS:
+            search_results = await asyncio.to_thread(self._search, topic)
             result = await asyncio.to_thread(
                 self._call,
                 "You report new developments concisely.",
-                f"Search for recent developments: {topic}. "
-                "Summarize any new findings in 2-3 sentences. "
-                "If nothing notable or new, respond with exactly: nothing new",
-                True,
+                f"Search results:\n{search_results}\n\n"
+                f"Based on these results, summarize any new developments about: {topic}\n"
+                "2-3 sentences max. If nothing notable, respond with exactly: nothing new",
             )
             if result and "nothing new" not in result.lower() and len(result) > 80:
                 await asyncio.to_thread(self.wiki.ingest, f"Research: {topic}", result)
@@ -151,111 +182,136 @@ class HorusLearner:
     # ── phase 3: skill discovery & install ──────────────────────────────────
 
     async def _discover_and_install_skills(self) -> list[str]:
-        search_result = await asyncio.to_thread(
+        # Step 1: targeted GitHub searches
+        raw1 = await asyncio.to_thread(self._search, 'site:github.com "SKILL.md" "claude code" skill')
+        raw2 = await asyncio.to_thread(self._search, "github claude code CLI SKILL.md slash command skill repository")
+        combined = raw1 + "\n\n" + raw2
+
+        # Step 2: extract real clone URLs from search results
+        parsed = await asyncio.to_thread(
             self._call,
-            "You are a developer researching tools.",
-            "Search GitHub for Claude Code skills — repos containing a SKILL.md file "
-            "intended for use with the Claude Code CLI. "
-            "List each as: SKILL_NAME | GITHUB_CLONE_URL\n"
-            "Include only genuine Claude Code skills with a real SKILL.md. "
-            "If none found, output exactly: NONE",
-            True,
+            "You extract GitHub repo URLs from search results.",
+            f"Search results:\n{combined}\n\n"
+            "List the GitHub repo clone URLs for repos that contain Claude Code SKILL.md files. "
+            "Output one URL per line, format: https://github.com/user/repo\n"
+            "Only include URLs clearly visible in the search results. If none, output: NONE",
         )
 
-        if not search_result or "NONE" in search_result.upper():
+        if not parsed or "NONE" in parsed.upper():
             return []
 
+        # Deduplicate URLs
+        repo_urls = []
+        seen_urls = set()
+        for line in parsed.splitlines():
+            line = line.strip().rstrip("/")
+            if line.startswith("https://github.com/") and line not in seen_urls:
+                # Normalize: strip .git, strip paths beyond user/repo
+                parts = line.replace("https://github.com/", "").split("/")
+                if len(parts) >= 2:
+                    url = f"https://github.com/{parts[0]}/{parts[1]}"
+                    if url not in seen_urls:
+                        repo_urls.append(url)
+                        seen_urls.add(url)
+
         discoveries = []
-        for line in search_result.splitlines():
-            if "|" not in line:
-                continue
-            parts = [p.strip() for p in line.split("|", 1)]
-            if len(parts) < 2:
-                continue
-            skill_name, clone_url = parts
-            # Sanitize skill name to a safe directory name
-            skill_name = "".join(c for c in skill_name if c.isalnum() or c in "-_").lower()
-            if not skill_name or not clone_url.startswith("https://github.com"):
-                continue
-
-            skill_dest = SKILLS_DIR / skill_name
-            if skill_dest.exists():
-                updated = await asyncio.to_thread(self._pull_skill, skill_name)
-                if updated:
-                    discoveries.append(f"Updated skill: {skill_name}")
-                continue
-
-            installed = await asyncio.to_thread(
-                self._review_and_install, skill_name, clone_url
-            )
-            if installed:
-                discoveries.append(f"Installed new skill: {skill_name} ({clone_url})")
+        for clone_url in repo_urls[:5]:  # cap at 5 repos per cycle
+            installed = await asyncio.to_thread(self._clone_and_install_all, clone_url)
+            discoveries.extend(installed)
 
         return discoveries
 
-    def _pull_skill(self, skill_name: str) -> bool:
-        """git pull an existing skill. Returns True if it was updated."""
-        try:
-            r = subprocess.run(
-                ["git", "-C", str(SKILLS_DIR / skill_name), "pull", "--ff-only"],
-                capture_output=True, text=True, timeout=15,
-            )
-            return r.returncode == 0 and "up to date" not in r.stdout.lower()
-        except Exception:
-            return False
-
-    def _review_and_install(self, skill_name: str, clone_url: str) -> bool:
-        """Clone to temp dir, run a Haiku code review, install if safe."""
+    def _clone_and_install_all(self, clone_url: str) -> list[str]:
+        """Clone a repo, find every SKILL.md (root or subdirs), install each as a separate skill."""
+        installed = []
         with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp) / skill_name
+            tmp_path = Path(tmp) / "repo"
             try:
                 r = subprocess.run(
                     ["git", "clone", "--depth=1", clone_url, str(tmp_path)],
                     capture_output=True, text=True, timeout=30,
                 )
                 if r.returncode != 0:
-                    return False
+                    return []
             except Exception:
-                return False
+                return []
 
-            # Collect reviewable files (SKILL.md + code files)
-            code_parts = []
-            for pattern in ("SKILL.md", "*.py", "*.sh", "*.js", "*.ts"):
-                for f in sorted(tmp_path.rglob(pattern)):
-                    if "node_modules" in str(f) or ".git" in str(f):
-                        continue
-                    try:
-                        code_parts.append(f"=== {f.name} ===\n{f.read_text(errors='ignore')[:2000]}")
-                    except Exception:
-                        continue
+            # Find every directory that contains a SKILL.md
+            skill_dirs = [
+                sm.parent for sm in tmp_path.rglob("SKILL.md")
+                if ".git" not in str(sm)
+            ]
 
-            if not code_parts:
-                return False
+            for skill_dir in skill_dirs:
+                # Derive skill name from SKILL.md frontmatter name: field, else dir name
+                skill_name = self._read_skill_name(skill_dir)
+                if not skill_name:
+                    continue
 
-            review = self._call(
-                "You are a security-focused code reviewer. Be strict about safety.",
-                "Review this Claude Code skill for safety before auto-installation. "
-                "Look for: shell injections, data exfiltration, destructive file ops, "
-                "network calls to unexpected hosts, or obfuscated code.\n\n"
-                + "\n\n".join(code_parts[:6])
-                + "\n\nRespond with exactly one of:\n"
-                "SAFE: <one-line reason>\n"
-                "UNSAFE: <one-line reason>",
-                max_tokens=200,
+                skill_dest = SKILLS_DIR / skill_name
+                if skill_dest.exists():
+                    continue  # already installed
+
+                ok = self._review_and_install_dir(skill_name, skill_dir, clone_url)
+                if ok:
+                    installed.append(f"Installed new skill: {skill_name} (from {clone_url})")
+
+        return installed
+
+    def _read_skill_name(self, skill_dir: Path) -> str:
+        """Extract `name:` from SKILL.md frontmatter, fallback to directory name."""
+        try:
+            text = (skill_dir / "SKILL.md").read_text(errors="ignore")
+            for line in text.splitlines():
+                if line.startswith("name:"):
+                    name = line.split(":", 1)[1].strip().strip('"').strip("'")
+                    sanitized = "".join(c for c in name if c.isalnum() or c in "-_").lower()
+                    if sanitized:
+                        return sanitized
+        except Exception:
+            pass
+        name = skill_dir.name
+        return "".join(c for c in name if c.isalnum() or c in "-_").lower() or ""
+
+    def _review_and_install_dir(self, skill_name: str, skill_dir: Path, source_url: str) -> bool:
+        """Review a single skill directory and install it if safe."""
+        code_parts = []
+        for pattern in ("SKILL.md", "*.py", "*.sh", "*.js", "*.ts"):
+            for f in sorted(skill_dir.rglob(pattern)):
+                if "node_modules" in str(f) or ".git" in str(f):
+                    continue
+                try:
+                    code_parts.append(f"=== {f.name} ===\n{f.read_text(errors='ignore')[:2000]}")
+                except Exception:
+                    continue
+
+        if not code_parts:
+            return False
+
+        review = self._call(
+            "You are a security-focused code reviewer. Be strict about safety.",
+            "Review this Claude Code skill for safety before auto-installation. "
+            "Look for: shell injections, data exfiltration, destructive file ops, "
+            "network calls to unexpected hosts, or obfuscated code.\n\n"
+            + "\n\n".join(code_parts[:6])
+            + "\n\nRespond with exactly one of:\n"
+            "SAFE: <one-line reason>\n"
+            "UNSAFE: <one-line reason>",
+            max_tokens=200,
+        )
+
+        if not review.upper().startswith("SAFE"):
+            self.vault.create_note(
+                f"Rejected: skill {skill_name}",
+                f"**Skill:** `{skill_name}`\n**Source:** {source_url}\n\n"
+                f"**Review result:**\n{review}\n\n**Related:** [[Horus Project]]",
+                "Horus",
             )
+            return False
 
-            if not review.upper().startswith("SAFE"):
-                self.vault.create_note(
-                    f"Skill Review Rejected — {skill_name}",
-                    f"**Skill:** `{skill_name}`\n**Source:** {clone_url}\n\n"
-                    f"**Review result:**\n{review}",
-                    "Horus",
-                )
-                return False
-
-            try:
-                SKILLS_DIR.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(tmp_path, SKILLS_DIR / skill_name)
-                return True
-            except Exception:
-                return False
+        try:
+            SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(skill_dir, SKILLS_DIR / skill_name)
+            return True
+        except Exception:
+            return False

@@ -13,9 +13,31 @@ WAKE_WORD = "horus"
 SILENCE_THRESHOLD = 0.01
 
 
+def list_input_devices() -> list[dict]:
+    try:
+        devices = sd.query_devices()
+        return [
+            {"index": i, "name": d["name"]}
+            for i, d in enumerate(devices)
+            if d["max_input_channels"] > 0
+        ]
+    except Exception:
+        return []
+
+
 class VoicePipeline:
     def __init__(self):
         self.whisper_model = whisper.load_model("base")
+        self.device_index = None
+        self._interrupted = False
+        self._speak_proc = None
+
+    def interrupt(self):
+        self._interrupted = True
+
+    def stop_speaking(self):
+        if self._speak_proc and self._speak_proc.poll() is None:
+            self._speak_proc.terminate()
 
     def _record_and_transcribe(self, duration: int) -> str:
         audio = sd.rec(
@@ -63,4 +85,5 @@ class VoicePipeline:
         return any(v in text for v in WAKE_VARIANTS)
 
     def speak(self, text: str, rate: int = 185):
-        subprocess.run(["say", "-v", "Daniel", "-r", str(rate), text], check=False)
+        self._speak_proc = subprocess.Popen(["say", "-v", "Daniel", "-r", str(rate), text])
+        self._speak_proc.wait()
