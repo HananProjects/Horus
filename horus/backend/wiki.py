@@ -19,6 +19,8 @@ WIKI_PAGES = {
     "Technical Skills":"Programming languages, frameworks, tools, projects, strengths/gaps",
     "Personal Life":   "Interests, hobbies, travel, purchases, goals outside of work",
     "Horus Project":   "Horus assistant features, architecture decisions, bugs, roadmap",
+    "Goals and Values":"Short and long-term goals, core values, motivations, priorities in life",
+    "Learning and Growth": "Topics Hanan is actively learning, books being read, courses, skills being developed",
 }
 
 _INGEST_PROMPT = """\
