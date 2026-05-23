@@ -15,6 +15,7 @@ from datetime import datetime
 
 import anthropic
 from dotenv import load_dotenv
+from duckduckgo_search import DDGS
 from self_coder import SelfCoder
 
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -22,13 +23,13 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 SKILLS_DIR = Path.home() / ".claude" / "skills"
 LEARNING_INTERVAL_HOURS = 6
 
-_WEB_TOOL = {"type": "web_search_20250305", "name": "web_search"}
-
 # Topics Horus proactively stays current on
 _WATCH_TOPICS = [
     "Anthropic Claude new model or API feature releases 2025",
     "new Claude Code slash commands or skills released on GitHub 2025",
     "new graduate software engineer job market trends and hiring outlook 2025",
+    "software engineering new grad full-time offer timelines and start dates 2025",
+    "long-term career paths for software engineers values-driven tech companies 2025",
 ]
 
 
@@ -67,6 +68,16 @@ class HorusLearner:
 
     # ── core call primitive ──────────────────────────────────────────────────
 
+    def _search(self, query: str) -> str:
+        """DuckDuckGo search, returns formatted results string."""
+        try:
+            with DDGS() as ddgs:
+                results = list(ddgs.text(query, max_results=5))
+            parts = [f"{r['title']}\n{r['body']}\nSource: {r['href']}" for r in results]
+            return "\n\n".join(parts) if parts else "No results found."
+        except Exception as e:
+            return f"Search failed: {e}"
+
     def _call(
         self,
         system: str,
@@ -74,31 +85,17 @@ class HorusLearner:
         web: bool = False,
         max_tokens: int = 800,
     ) -> str:
-        """Stateless Haiku call, optionally with built-in web search."""
-        messages: list[dict] = [{"role": "user", "content": user}]
-        kwargs: dict = dict(
+        """Stateless Haiku call. If web=True, prepends DuckDuckGo results to the prompt."""
+        if web:
+            search_results = self._search(user[:300])
+            user = f"Web search results:\n{search_results}\n\nUsing the above, answer:\n{user}"
+
+        response = self._client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=max_tokens,
             system=system,
-            messages=messages,
+            messages=[{"role": "user", "content": user}],
         )
-        if web:
-            kwargs["tools"] = [_WEB_TOOL]
-
-        while True:
-            response = self._client.messages.create(**kwargs)
-            if response.stop_reason == "tool_use":
-                messages.append({"role": "assistant", "content": response.content})
-                results = [
-                    {"type": "tool_result", "tool_use_id": b.id, "content": b.input.get("query", "")}
-                    for b in response.content
-                    if b.type == "tool_use"
-                ]
-                messages.append({"role": "user", "content": results})
-                kwargs["messages"] = messages
-            else:
-                break
-
         return next((b.text for b in response.content if hasattr(b, "text")), "")
 
     # ── phase 1: wiki gap filling ────────────────────────────────────────────
