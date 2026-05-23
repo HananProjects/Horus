@@ -28,6 +28,7 @@ _WEB_TOOL = {"type": "web_search_20250305", "name": "web_search"}
 _WATCH_TOPICS = [
     "Anthropic Claude new model or API feature releases 2025",
     "new Claude Code slash commands or skills released on GitHub 2025",
+    "new graduate software engineer job market trends and hiring outlook 2025",
 ]
 
 
