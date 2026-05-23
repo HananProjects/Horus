@@ -16,6 +16,7 @@ WIKI_FOLDER = "Wiki"
 WIKI_PAGES = {
     "Hanan Profile":   "Personal background, personality, values, life situation, relationships",
     "Job Search":      "Job applications, interviews, companies, roles, status, recruiter contacts",
+    "Interview Prep":  "Active interview pipelines, stages reached, prep notes, outcomes, follow-up actions per company",
     "Technical Skills":"Programming languages, frameworks, tools, projects, strengths/gaps",
     "Personal Life":   "Interests, hobbies, travel, purchases, goals outside of work",
     "Horus Project":   "Horus assistant features, architecture decisions, bugs, roadmap",
