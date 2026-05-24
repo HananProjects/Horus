@@ -303,7 +303,7 @@ class HorusLearner:
             max_tokens=200,
         )
 
-        if not review.upper().startswith("SAFE"):
+        if "UNSAFE:" in review.upper()[:200]:
             return False
 
         try:
