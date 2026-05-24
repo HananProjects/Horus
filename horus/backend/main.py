@@ -13,6 +13,7 @@ from computer_use import ComputerUseAgent
 from obsidian import ObsidianVault
 from wiki import WikiManager
 from learner import HorusLearner, LEARNING_INTERVAL_HOURS
+from briefing import MorningBriefing
 import nodes as node_store
 
 app = FastAPI(title="Horus")
@@ -32,6 +33,7 @@ computer = ComputerUseAgent()
 obsidian = ObsidianVault()
 wiki = WikiManager(obsidian)
 learner = HorusLearner(wiki, obsidian)
+briefer = MorningBriefing(wiki, obsidian)
 
 # Global settings
 settings = {
@@ -61,6 +63,10 @@ OBSIDIAN_SEARCH_TRIGGERS = (
     "search my notes", "search obsidian", "in my notes",
     "from my notes", "my obsidian", "look in my notes",
     "what do my notes say", "check my notes", "my vault",
+)
+
+MORNING_TRIGGERS = (
+    "good morning horus",
 )
 
 GRAPH_QUERY_TRIGGERS = (
@@ -99,6 +105,10 @@ def is_obsidian_save_request(text: str) -> bool:
 
 def is_obsidian_search_request(text: str) -> bool:
     return any(t in text.lower() for t in OBSIDIAN_SEARCH_TRIGGERS)
+
+
+def is_morning_briefing_request(text: str) -> bool:
+    return any(t in text.lower() for t in MORNING_TRIGGERS)
 
 
 def is_graph_query(text: str) -> bool:
@@ -431,7 +441,14 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
                     await send_action(ws, f"Storing explicit memory: {fact[:60]}...")
                 break
 
-        if is_computer_use_request(user_text):
+        if is_morning_briefing_request(user_text):
+            await send_action(ws, "Preparing morning briefing...")
+            briefing_text = await asyncio.to_thread(briefer.generate)
+            await send_message(ws, "assistant", briefing_text)
+            await send_status(ws, "speaking")
+            await asyncio.to_thread(voice.speak, briefing_text, settings["voice_rate"])
+
+        elif is_computer_use_request(user_text):
             await send_action(ws, "Detected computer use request...")
             result = await computer.run_task_async(
                 task=user_text,
