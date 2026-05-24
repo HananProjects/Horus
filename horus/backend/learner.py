@@ -37,6 +37,8 @@ _WIKI_LINK_MAP = [
     (("learn", "course", "study", "growth", "read"), "[[Learning and Growth]]"),
     (("horus", "backend", "frontend", "self-cod", "daemon"), "[[Horus Project]]"),
     (("goal", "value", "priority", "life", "personal"), "[[Goals and Values]]"),
+    (("employment", "start date", "onboarding", "relocation", "deadline"), "[[Employment Timeline]]"),
+    (("tenstorrent", "priority compan", "target compan", "culture", "tech stack"), "[[Companies of Interest]]"),
 ]
 
 # Topics Horus proactively stays current on
@@ -46,6 +48,8 @@ _WATCH_TOPICS = [
     "new graduate software engineer job market trends and hiring outlook 2025",
     "software engineering new grad full-time offer timelines and start dates 2025",
     "long-term career paths for software engineers values-driven tech companies 2025",
+    "software engineering technical interview preparation resources and strategies 2025",
+    "top AI chip and hardware companies hiring new grad software engineers 2025",
 ]
 
 
