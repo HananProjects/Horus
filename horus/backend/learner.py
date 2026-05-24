@@ -33,7 +33,9 @@ _WIKI_LINK_MAP = [
     (("interview", "tenstorrent", "two dots", "offer", "pipeline"), "[[Interview Prep]]"),
     (("application", "apply", "applied", "company", "hiring", "recruit"), "[[Applications Pipeline]]"),
     (("job", "career", "employment", "full-time", "new grad"), "[[Job Search]]"),
-    (("claude", "anthropic", "model", "api", "skill", "github"), "[[Technical Skills]]"),
+    (("skill", "installed", "github", "claude code"), "[[Installed Skills]]"),
+    (("claude", "anthropic", "model", "api"), "[[Technical Skills]]"),
+    (("readiness", "gap", "strength", "weakness", "assessment"), "[[Career Readiness]]"),
     (("learn", "course", "study", "growth", "read"), "[[Learning and Growth]]"),
     (("horus", "backend", "frontend", "self-cod", "daemon"), "[[Horus Project]]"),
     (("goal", "value", "priority", "life", "personal"), "[[Goals and Values]]"),
@@ -50,6 +52,9 @@ _WATCH_TOPICS = [
     "long-term career paths for software engineers values-driven tech companies 2025",
     "software engineering technical interview preparation resources and strategies 2025",
     "top AI chip and hardware companies hiring new grad software engineers 2025",
+    "web security best practices XSS CSRF session management for software engineers 2025",
+    "frontend performance optimization techniques React Vue web apps 2025",
+    "GraphQL vs REST API design patterns best practices 2025",
 ]
 
 
