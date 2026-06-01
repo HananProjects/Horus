@@ -9,7 +9,7 @@ import anthropic
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv(Path(__file__).parent / ".env", override=True)
 
 WIKI_FOLDER = "Wiki"
 
@@ -121,8 +121,8 @@ class WikiManager:
             if current_title and current_lines:
                 self._write_page(current_title, "\n".join(current_lines).strip())
 
-        except Exception:
-            pass  # Background task — silently skip on error
+        except Exception as e:
+            print(f"[wiki.ingest error] {e}")
 
     def lint(self):
         """

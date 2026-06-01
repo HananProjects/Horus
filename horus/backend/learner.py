@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from ddgs import DDGS
 from self_coder import SelfCoder
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv(Path(__file__).parent / ".env", override=True)
 
 SKILLS_DIR = Path.home() / ".claude" / "skills"
 LEARNING_INTERVAL_HOURS = 6

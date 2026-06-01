@@ -25,14 +25,5 @@
       "description": "Adversarial code reviewer skill",
       "source": "~/.claude/skills/"
     }
-  },
-  {
-    "id": 4,
-    "label": "Skill: agent-workflow-designer",
-    "type": "generic",
-    "metadata": {
-      "description": "Agent workflow designer skill",
-      "source": "~/.claude/skills/"
-    }
   }
 ]

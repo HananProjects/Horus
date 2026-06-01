@@ -5,6 +5,7 @@ import numpy as np
 import sounddevice as sd
 import whisper
 import scipy.io.wavfile as wav
+import pyttsx3
 
 SAMPLE_RATE = 16000
 DURATION = 5
@@ -30,14 +31,12 @@ class VoicePipeline:
         self.whisper_model = whisper.load_model("base")
         self.device_index = None
         self._interrupted = False
-        self._speak_proc = None
 
     def interrupt(self):
         self._interrupted = True
 
     def stop_speaking(self):
-        if self._speak_proc and self._speak_proc.poll() is None:
-            self._speak_proc.terminate()
+        pass  # pyttsx3 runs synchronously; interruption handled by voice thread cancellation
 
     def _record_and_transcribe(self, duration: int) -> str:
         audio = sd.rec(
@@ -85,5 +84,8 @@ class VoicePipeline:
         return any(v in text for v in WAKE_VARIANTS)
 
     def speak(self, text: str, rate: int = 185):
-        self._speak_proc = subprocess.Popen(["say", "-v", "Daniel", "-r", str(rate), text])
-        self._speak_proc.wait()
+        engine = pyttsx3.init()
+        engine.setProperty("rate", rate)
+        engine.say(text)
+        engine.runAndWait()
+        engine.stop()

@@ -10,7 +10,7 @@ import profile as user_profile
 import agents as agent_registry
 import gmail as gmail_module
 
-load_dotenv(Path(__file__).parent / ".env")
+load_dotenv(Path(__file__).parent / ".env", override=True)
 
 
 # ── helper data fetchers ────────────────────────────────────────────────────

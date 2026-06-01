@@ -6,7 +6,7 @@ from typing import Optional
 import chromadb
 from chromadb.utils import embedding_functions
 
-VAULT_PATH = Path("/Users/hanan/Documents/Obsidian Vault")
+VAULT_PATH = Path(r"C:\Users\Hanan\OneDrive - University of Saskatchewan\Obsidian Vault")
 HORUS_FOLDER = "Horus"
 VAULT_COLLECTION = "horus_vault"
 
@@ -22,7 +22,7 @@ class ObsidianVault:
     def __init__(self, vault_path: str = str(VAULT_PATH), chroma_path: str = "./chroma_data"):
         self.vault = Path(vault_path)
         self.horus_dir = self.vault / HORUS_FOLDER
-        self.horus_dir.mkdir(exist_ok=True)
+        self.horus_dir.mkdir(parents=True, exist_ok=True)
 
         self._chroma = chromadb.PersistentClient(path=chroma_path)
         self._ef = embedding_functions.DefaultEmbeddingFunction()
