@@ -1,1 +1,38 @@
-[]
+[
+  {
+    "id": 0,
+    "label": "Skill: a11y-audit",
+    "type": "generic",
+    "metadata": {
+      "description": "Accessibility auditing skill",
+      "source": "~/.claude/skills/"
+    }
+  },
+  {
+    "id": 1,
+    "label": "Skill: ab-test-setup",
+    "type": "generic",
+    "metadata": {
+      "description": "A/B test setup skill",
+      "source": "~/.claude/skills/"
+    }
+  },
+  {
+    "id": 3,
+    "label": "Skill: adversarial-reviewer",
+    "type": "generic",
+    "metadata": {
+      "description": "Adversarial code reviewer skill",
+      "source": "~/.claude/skills/"
+    }
+  },
+  {
+    "id": 4,
+    "label": "Skill: agent-workflow-designer",
+    "type": "generic",
+    "metadata": {
+      "description": "Agent workflow designer skill",
+      "source": "~/.claude/skills/"
+    }
+  }
+]
