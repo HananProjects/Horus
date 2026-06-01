@@ -35,6 +35,8 @@ _WIKI_LINK_MAP = [
     (("job", "career", "employment", "full-time", "new grad"), "[[Job Search]]"),
     (("skill", "installed", "github", "claude code"), "[[Installed Skills]]"),
     (("claude", "anthropic", "model", "api"), "[[Technical Skills]]"),
+    (("xss", "csrf", "session", "security", "authentication", "vulnerability"), "[[Web Security]]"),
+    (("react", "vue", "frontend", "performance", "bundle", "rendering", "web vitals"), "[[Frontend Performance]]"),
     (("readiness", "gap", "strength", "weakness", "assessment"), "[[Career Readiness]]"),
     (("learn", "course", "study", "growth", "read"), "[[Learning and Growth]]"),
     (("horus", "backend", "frontend", "self-cod", "daemon"), "[[Horus Project]]"),
@@ -55,6 +57,7 @@ _WATCH_TOPICS = [
     "web security best practices XSS CSRF session management for software engineers 2025",
     "frontend performance optimization techniques React Vue web apps 2025",
     "GraphQL vs REST API design patterns best practices 2025",
+    "Claude Code skills workflow automation tools community GitHub 2025",
 ]
 
 
