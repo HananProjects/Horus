@@ -10,7 +10,29 @@ import profile as user_profile
 import agents as agent_registry
 import gmail as gmail_module
 
+import os
 load_dotenv(Path(__file__).parent / ".env", override=True)
+
+GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
+
+
+def _build_maps_url(inp: dict) -> str:
+    key = GOOGLE_MAPS_API_KEY
+    mode = inp.get("map_mode", "place")
+    base = "https://www.google.com/maps/embed/v1"
+    if mode == "directions":
+        origin = inp.get("origin", "")
+        dest = inp.get("destination", inp.get("location", ""))
+        return f"{base}/directions?key={key}&origin={origin}&destination={dest}&mode=driving"
+    if mode == "search":
+        q = inp.get("location", inp.get("title", ""))
+        return f"{base}/search?key={key}&q={q}"
+    if mode == "satellite":
+        q = inp.get("location", inp.get("title", ""))
+        return f"{base}/place?key={key}&q={q}&maptype=satellite&zoom=15"
+    # default: place
+    q = inp.get("location", inp.get("title", ""))
+    return f"{base}/place?key={key}&q={q}&maptype=satellite"
 
 
 # ── helper data fetchers ────────────────────────────────────────────────────
@@ -115,7 +137,7 @@ You can call delegate_to_agent multiple times in one response — they run in pa
 
 The visual interface has a central glowing sphere called "the eye". Workspace nodes branch off it representing things being tracked or worked on. When Hanan says "add this to the eye" or "put that on the eye", use add_workspace_node. When he says "remove that from the eye", use remove_workspace_node.
 
-Use visual display tools aggressively. Any time Hanan asks about something visual, show it on the eye without being asked. For stocks use show_visual with content_type="stock". For people, places, products — call image_search then show_visual with content_type="image". For YouTube use content_type="video". For live sports use content_type="score". Never just describe something visual when you can show it.
+Use visual display tools aggressively. Any time Hanan asks about something visual, show it on the eye without being asked. For stocks use show_visual with content_type="stock". For people, places, products — call image_search then show_visual with content_type="image". For YouTube use content_type="video". For live sports use content_type="score". For any location, place, address, travel, or geography question — use content_type="map". Use map_mode="directions" for routes, map_mode="search" for finding nearby places, map_mode="satellite" for overhead/3D views, map_mode="place" for a specific location. Never just describe something visual when you can show it.
 
 You have full Gmail access. Use gmail_search to find emails, gmail_read to read them, gmail_trash to delete, gmail_bulk_trash to clean categories, gmail_send to compose. Always search first and confirm count before bulk-trashing.
 
@@ -198,15 +220,27 @@ TOOLS = [
     },
     {
         "name": "show_visual",
-        "description": "Display rich visual content on the eye. Use for stocks, images, videos, webpages, sports scores.",
+        "description": "Display rich visual content on the eye. Use for stocks, images, videos, webpages, sports scores, and maps.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "content_type": {"type": "string", "enum": ["stock", "image", "video", "webpage", "score"]},
+                "content_type": {
+                    "type": "string",
+                    "enum": ["stock", "image", "video", "webpage", "score", "map"],
+                    "description": "map: Google Maps/Earth view. Use for any location, place, directions, or satellite imagery request.",
+                },
                 "title": {"type": "string"},
                 "symbol": {"type": "string"},
                 "url": {"type": "string"},
                 "query": {"type": "string"},
+                "location": {"type": "string", "description": "For map: place name or address, e.g. 'Eiffel Tower, Paris' or 'Saskatoon, SK'"},
+                "map_mode": {
+                    "type": "string",
+                    "enum": ["place", "satellite", "search", "directions"],
+                    "description": "place: show a specific location. satellite: overhead/3D satellite view. search: search for places. directions: route between two points.",
+                },
+                "origin": {"type": "string", "description": "For directions mode: starting location"},
+                "destination": {"type": "string", "description": "For directions mode: destination location"},
             },
             "required": ["content_type", "title"],
         },
@@ -470,6 +504,8 @@ class Brain:
                                 vid_id = url.split("youtu.be/")[-1].split("?")[0]
                                 url = f"https://www.youtube.com/embed/{vid_id}?autoplay=0"
                             panel_data["url"] = url
+                        elif inp["content_type"] == "map":
+                            panel_data["url"] = _build_maps_url(inp)
                         elif inp.get("url"):
                             panel_data["url"] = inp["url"]
                         panels.append(panel_data)

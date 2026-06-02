@@ -16,6 +16,7 @@ const VISUAL_CONFIG = {
   webpage: { label: "PREVIEW",    color: "#06d6a0", defaultW: 420, defaultH: 340 },
   score:   { label: "LIVE SCORE", color: "#ef233c", defaultW: 340, defaultH: 210 },
   card:    { label: "INFO CARD",  color: "#f59e0b", defaultW: 360, defaultH: 420 },
+  map:     { label: "MAP",        color: "#22c55e", defaultW: 480, defaultH: 360 },
 };
 
 // --- Sparkline for stock ---
@@ -355,7 +356,7 @@ function VisualPanel({ panel, onDismiss }) {
       {panel.content_type === "image"   && <ImageContent panel={panel} />}
       {panel.content_type === "score"   && <ScoreContent panel={panel} />}
       {panel.content_type === "card"    && <CardContent panel={panel} />}
-      {(panel.content_type === "video" || panel.content_type === "webpage") && (
+      {(panel.content_type === "video" || panel.content_type === "webpage" || panel.content_type === "map") && (
         <FrameContent url={panel.url} title={panel.title} />
       )}
     </DraggableWindow>

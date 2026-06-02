@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(python -c \"import sounddevice as sd; print\\(sd.query_devices\\(\\)\\)\")",
+      "Bash(venv\\\\Scripts\\\\pip install *)",
+      "PowerShell(Rename-Item \"b:\\\\Horus\\\\Horus\\\\horus\\\\backend\\\\credentials.json.json\" \"credentials.json\")",
+      "Bash(git add *)",
+      "Bash(git commit -m 'add Gmail integration and speech interrupt *)",
+      "Bash(git checkout *)",
+      "PowerShell(Get-Content \"B:\\\\Horus\\\\Horus\\\\horus\\\\backend\\\\.env\" | ForEach-Object { if \\($_ -match \"^ANTHROPIC\"\\) { \"ANTHROPIC key found: $\\($_.Substring\\(0, 30\\)\\)...\" } else { $_ } })",
+      "Bash(./venv/Scripts/pip.exe list *)"
+    ]
+  }
+}
