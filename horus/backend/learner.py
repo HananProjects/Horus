@@ -43,6 +43,7 @@ _WIKI_LINK_MAP = [
     (("goal", "value", "priority", "life", "personal"), "[[Goals and Values]]"),
     (("employment", "start date", "onboarding", "relocation", "deadline"), "[[Employment Timeline]]"),
     (("tenstorrent", "priority compan", "target compan", "culture", "tech stack"), "[[Companies of Interest]]"),
+    (("canada", "canadian", "toronto", "vancouver", "waterloo", "ontario"), "[[Job Search]]"),
 ]
 
 # Topics Horus proactively stays current on
@@ -58,6 +59,8 @@ _WATCH_TOPICS = [
     "frontend performance optimization techniques React Vue web apps 2025",
     "GraphQL vs REST API design patterns best practices 2025",
     "Claude Code skills workflow automation tools community GitHub 2025",
+    "Canadian tech job market new grad software engineer hiring 2025 Toronto Vancouver Waterloo",
+    "best practices using Claude Code skills markdown HTML scraping automation workflows 2025",
 ]
 
 
