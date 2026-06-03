@@ -29,10 +29,12 @@ def _build_maps_url(inp: dict) -> str:
         return f"{base}/search?key={key}&q={q}"
     if mode == "satellite":
         q = inp.get("location", inp.get("title", ""))
-        return f"{base}/place?key={key}&q={q}&maptype=satellite&zoom=15"
-    # default: place
+        zoom = inp.get("zoom", 15)
+        return f"{base}/place?key={key}&q={q}&maptype=satellite&zoom={zoom}"
+    # default: place — zoom 16 is neighbourhood level, good starting point
     q = inp.get("location", inp.get("title", ""))
-    return f"{base}/place?key={key}&q={q}&maptype=satellite"
+    zoom = inp.get("zoom", 16)
+    return f"{base}/place?key={key}&q={q}&maptype=satellite&zoom={zoom}"
 
 
 # ── helper data fetchers ────────────────────────────────────────────────────
@@ -506,6 +508,13 @@ class Brain:
                             panel_data["url"] = url
                         elif inp["content_type"] == "map":
                             panel_data["url"] = _build_maps_url(inp)
+                            panel_data["api_key"] = GOOGLE_MAPS_API_KEY
+                            panel_data["map_mode"] = inp.get("map_mode", "place")
+                            panel_data["location"] = inp.get("location") or inp.get("destination") or inp.get("title", "")
+                            if inp.get("origin"):
+                                panel_data["origin"] = inp["origin"]
+                            if inp.get("destination"):
+                                panel_data["destination"] = inp["destination"]
                         elif inp.get("url"):
                             panel_data["url"] = inp["url"]
                         panels.append(panel_data)

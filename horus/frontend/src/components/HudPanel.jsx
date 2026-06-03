@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import DraggableWindow from "./DraggableWindow";
+import GlobeViewer from "./GlobeViewer";
 
 // --- Agent result panels ---
 
@@ -322,7 +323,7 @@ function CardContent({ panel }) {
   );
 }
 
-// --- Visual panel (wraps all visual content types) ---
+// --- Visual panel (wraps all visual content types except map) ---
 
 // Research panel anchor: right edge, top 10% — image panels sit just to its left
 const RESEARCH_X = () => window.innerWidth - 286;
@@ -356,7 +357,7 @@ function VisualPanel({ panel, onDismiss }) {
       {panel.content_type === "image"   && <ImageContent panel={panel} />}
       {panel.content_type === "score"   && <ScoreContent panel={panel} />}
       {panel.content_type === "card"    && <CardContent panel={panel} />}
-      {(panel.content_type === "video" || panel.content_type === "webpage" || panel.content_type === "map") && (
+      {(panel.content_type === "video" || panel.content_type === "webpage") && (
         <FrameContent url={panel.url} title={panel.title} />
       )}
     </DraggableWindow>
@@ -429,6 +430,13 @@ export default function HudPanels({ panels, onDismiss }) {
     <div className="absolute inset-0 pointer-events-none z-20">
       {panels.map(panel => {
         if (panel.panel_type === "visual") {
+          if (panel.content_type === "map") {
+            return (
+              <div key={panel.id} className="pointer-events-auto">
+                <GlobeViewer panel={panel} onDismiss={onDismiss} />
+              </div>
+            );
+          }
           return (
             <div key={panel.id} className="pointer-events-auto">
               <VisualPanel panel={panel} onDismiss={onDismiss} />
