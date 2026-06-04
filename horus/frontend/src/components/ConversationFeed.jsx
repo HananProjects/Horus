@@ -39,6 +39,9 @@ export default function ConversationFeed({ messages, onSendText, onVoiceStart, o
               }`}
             >
               {msg.content}
+              {msg.streaming && (
+                <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-hud-glow opacity-80 animate-pulse align-middle" />
+              )}
             </div>
           </div>
         ))}

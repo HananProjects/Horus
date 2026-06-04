@@ -41,6 +41,7 @@ settings = {
     "wake_word_enabled": True,
     "voice_rate": 185,
     "mic_device_index": None,
+    "provider": brain.provider,
 }
 
 REMEMBER_TRIGGERS = ("remember that", "remember this", "don't forget", "note that", "keep in mind")
@@ -63,6 +64,13 @@ OBSIDIAN_SEARCH_TRIGGERS = (
     "search my notes", "search obsidian", "in my notes",
     "from my notes", "my obsidian", "look in my notes",
     "what do my notes say", "check my notes", "my vault",
+)
+
+PROFILE_QUERY_TRIGGERS = (
+    "what do you know about me", "what do you know about hanan",
+    "what have you learned about me", "tell me about me",
+    "what's in my profile", "my profile", "what do you remember about me",
+    "from my vault", "from the vault", "from obsidian",
 )
 
 MORNING_TRIGGERS = (
@@ -105,6 +113,26 @@ def is_obsidian_save_request(text: str) -> bool:
 
 def is_obsidian_search_request(text: str) -> bool:
     return any(t in text.lower() for t in OBSIDIAN_SEARCH_TRIGGERS)
+
+
+def is_profile_query(text: str) -> bool:
+    return any(t in text.lower() for t in PROFILE_QUERY_TRIGGERS)
+
+
+def _load_profile_notes() -> list[dict]:
+    """Read the core wiki pages directly — used when semantic search would miss a meta-question."""
+    wiki_dir = obsidian.vault / "Wiki"
+    pages = ["Hanan Profile.md", "Job Search.md", "Technical Skills.md",
+             "Personal Life.md", "Goals and Values.md", "Learning and Growth.md"]
+    notes = []
+    for name in pages:
+        path = wiki_dir / name
+        try:
+            content = path.read_text(encoding="utf-8")
+            notes.append({"title": path.stem, "path": str(path.relative_to(obsidian.vault)), "snippet": content[:600]})
+        except Exception:
+            continue
+    return notes
 
 
 def is_morning_briefing_request(text: str) -> bool:
@@ -312,6 +340,12 @@ async def websocket_endpoint(ws: WebSocket):
                 new = data.get("settings", {})
                 settings.update({k: v for k, v in new.items() if k in settings})
                 voice.device_index = settings.get("mic_device_index")
+                if "provider" in new:
+                    try:
+                        brain.set_provider(new["provider"])
+                        settings["provider"] = brain.provider
+                    except ValueError:
+                        settings["provider"] = brain.provider
                 await send_settings(ws)
 
             elif msg_type == "clear_memory":
@@ -495,21 +529,58 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
             relevant_memories = memory.retrieve(user_text)
 
             await send_action(ws, "Searching Obsidian vault...")
-            vault_notes = await asyncio.to_thread(obsidian.search, user_text)
+            if is_profile_query(user_text):
+                vault_notes = await asyncio.to_thread(_load_profile_notes)
+            else:
+                vault_notes = await asyncio.to_thread(obsidian.search, user_text)
 
             graph_context = None
             if is_graph_query(user_text):
                 await send_action(ws, "Querying knowledge graph...")
                 graph_context = await asyncio.to_thread(_run_graphify_query, user_text)
 
-            await send_action(ws, "Calling Claude...")
-            response, panels = await asyncio.to_thread(
-                brain.chat, user_text, relevant_memories, vault_notes or None, graph_context
-            )
+            model_label = brain.ollama_model if brain.provider == "ollama" else "Claude"
+            await send_action(ws, f"Calling {model_label}...")
+
+            if brain.provider == "ollama":
+                # Streaming path — tokens arrive word by word
+                loop = asyncio.get_running_loop()
+                stream_q: asyncio.Queue = asyncio.Queue()
+
+                def on_token(sig):
+                    asyncio.run_coroutine_threadsafe(stream_q.put(sig), loop)
+
+                brain_task = asyncio.create_task(
+                    asyncio.to_thread(
+                        brain.chat, user_text, relevant_memories, vault_notes or None, graph_context, on_token
+                    )
+                )
+
+                # Drain the token queue until text is fully streamed
+                while True:
+                    try:
+                        sig = await asyncio.wait_for(stream_q.get(), timeout=120.0)
+                    except asyncio.TimeoutError:
+                        break
+                    if sig == "__start__":
+                        await ws.send_json({"type": "chunk_start"})
+                    elif sig == "__done__":
+                        await ws.send_json({"type": "chunk_end"})
+                        break
+                    elif sig == "__cancel__":
+                        await ws.send_json({"type": "chunk_cancel"})
+                    else:
+                        await ws.send_json({"type": "chunk", "content": sig})
+
+                response, panels = await brain_task
+            else:
+                response, panels = await asyncio.to_thread(
+                    brain.chat, user_text, relevant_memories, vault_notes or None, graph_context
+                )
+                await send_message(ws, "assistant", response)
 
             for panel in panels:
                 await ws.send_json({"type": "panel", **panel})
-            await send_message(ws, "assistant", response)
             await send_action(ws, "Storing memory...")
             memory.store(user_text, response)
             await send_memories(ws)

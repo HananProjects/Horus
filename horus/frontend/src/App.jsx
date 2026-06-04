@@ -42,6 +42,26 @@ export default function App() {
 
       if (data.type === "status") {
         setStatus(data.status);
+      } else if (data.type === "chunk_start") {
+        setMessages((prev) => [...prev, { role: "assistant", content: "", streaming: true, ts: Date.now() }]);
+      } else if (data.type === "chunk") {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.streaming) {
+            return [...prev.slice(0, -1), { ...last, content: last.content + data.content }];
+          }
+          return prev;
+        });
+      } else if (data.type === "chunk_end") {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.streaming) {
+            return [...prev.slice(0, -1), { ...last, streaming: false }];
+          }
+          return prev;
+        });
+      } else if (data.type === "chunk_cancel") {
+        setMessages((prev) => prev[prev.length - 1]?.streaming ? prev.slice(0, -1) : prev);
       } else if (data.type === "message") {
         setMessages((prev) => [...prev, { role: data.role, content: data.content, ts: Date.now() }]);
       } else if (data.type === "action") {

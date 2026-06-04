@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 websockets
 anthropic
+openai
 openai-whisper
 pyttsx3
 sounddevice

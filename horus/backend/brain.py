@@ -1,3 +1,5 @@
+import json
+import re
 import subprocess
 import anthropic
 from pathlib import Path
@@ -287,6 +289,19 @@ TOOLS = [
     },
 ]
 
+# OpenAI-compatible tool format for Ollama
+OLLAMA_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": t["name"],
+            "description": t["description"],
+            "parameters": t["input_schema"],
+        },
+    }
+    for t in TOOLS
+]
+
 
 # ── tool implementations ────────────────────────────────────────────────────
 
@@ -398,13 +413,98 @@ TOOL_HANDLERS = {
 }
 
 
+def _handle_visual_tool(inp: dict) -> tuple:
+    """Build panel_data and result string for a show_visual tool call."""
+    panel_data = {
+        "panel_type": "visual",
+        "content_type": inp["content_type"],
+        "title": inp["title"],
+    }
+    if inp["content_type"] == "stock" and inp.get("symbol"):
+        panel_data["symbol"] = inp["symbol"].upper()
+        panel_data["data"] = _fetch_stock_data(inp["symbol"].upper())
+    elif inp["content_type"] == "score":
+        query = inp.get("query") or inp.get("title", "")
+        score_data = _fetch_sports_score(query)
+        panel_data["data"] = score_data
+        panel_data["game_id"] = score_data.get("game_id", "")
+        panel_data["sport"] = score_data.get("sport", "basketball")
+        panel_data["league"] = score_data.get("league", "nba")
+    elif inp["content_type"] == "video" and inp.get("url"):
+        url = inp["url"]
+        if "youtube.com/watch" in url:
+            vid_id = url.split("v=")[-1].split("&")[0]
+            url = f"https://www.youtube.com/embed/{vid_id}?autoplay=0"
+        elif "youtu.be/" in url:
+            vid_id = url.split("youtu.be/")[-1].split("?")[0]
+            url = f"https://www.youtube.com/embed/{vid_id}?autoplay=0"
+        panel_data["url"] = url
+    elif inp["content_type"] == "map":
+        panel_data["url"] = _build_maps_url(inp)
+        panel_data["api_key"] = GOOGLE_MAPS_API_KEY
+        panel_data["map_mode"] = inp.get("map_mode", "place")
+        panel_data["location"] = inp.get("location") or inp.get("destination") or inp.get("title", "")
+        if inp.get("origin"):
+            panel_data["origin"] = inp["origin"]
+        if inp.get("destination"):
+            panel_data["destination"] = inp["destination"]
+    elif inp.get("url"):
+        panel_data["url"] = inp["url"]
+    return panel_data, f"Visual displayed: {inp['content_type']} — '{inp['title']}'."
+
+
 # ── Brain ──────────────────────────────────────────────────────────────────
 
 class Brain:
     def __init__(self):
         self.client = anthropic.Anthropic()
         self.model = "claude-sonnet-4-6"
+        self.provider: str = os.getenv("HORUS_PROVIDER", "claude")
+        self.ollama_model: str = os.getenv("OLLAMA_MODEL", "qwen3:14b")
+        self.ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        self._ollama_client = None
         self.history: list[dict] = []
+
+    def set_provider(self, provider: str) -> None:
+        if provider not in ("claude", "ollama"):
+            raise ValueError(f"Unknown provider: {provider!r}")
+        self.provider = provider
+
+    def _get_ollama_client(self):
+        if self._ollama_client is None:
+            try:
+                from openai import OpenAI as _OllamaClient
+            except ImportError:
+                raise RuntimeError("openai package not installed — run: pip install openai")
+            self._ollama_client = _OllamaClient(
+                base_url=self.ollama_base_url,
+                api_key="ollama",
+            )
+        return self._ollama_client
+
+    def _build_system(
+        self,
+        memories: Optional[list],
+        obsidian_notes: Optional[list],
+        graph_context: Optional[str],
+    ) -> str:
+        memory_block = ""
+        if memories:
+            memory_block = "\n\n[Relevant memories from past conversations]\n" + "\n".join(f"- {m}" for m in memories)
+        obsidian_block = ""
+        if obsidian_notes:
+            parts = [f"**{n['title']}** ({n['path']}):\n{n['snippet']}" for n in obsidian_notes]
+            obsidian_block = "\n\n[Relevant notes from Obsidian vault]\n" + "\n\n".join(parts)
+        graph_block = ""
+        if graph_context:
+            graph_block = f"\n\n[Knowledge graph context — token-compressed from codebase]\n{graph_context}"
+        profile = user_profile.load()
+        profile_block = user_profile.to_prompt_block(profile)
+        system = SYSTEM_PROMPT
+        if profile_block:
+            system += f"\n\n{profile_block}"
+        system += memory_block + obsidian_block + graph_block
+        return system
 
     def chat(
         self,
@@ -412,27 +512,20 @@ class Brain:
         memories: Optional[list] = None,
         obsidian_notes: Optional[list] = None,
         graph_context: Optional[str] = None,
+        on_token=None,
     ) -> tuple[str, list]:
-        memory_block = ""
-        if memories:
-            memory_block = "\n\n[Relevant memories from past conversations]\n" + "\n".join(f"- {m}" for m in memories)
+        if self.provider == "ollama":
+            return self._chat_ollama(user_text, memories, obsidian_notes, graph_context, on_token=on_token)
+        return self._chat_claude(user_text, memories, obsidian_notes, graph_context)
 
-        obsidian_block = ""
-        if obsidian_notes:
-            parts = [f"**{n['title']}** ({n['path']}):\n{n['snippet']}" for n in obsidian_notes]
-            obsidian_block = "\n\n[Relevant notes from Obsidian vault]\n" + "\n\n".join(parts)
-
-        graph_block = ""
-        if graph_context:
-            graph_block = f"\n\n[Knowledge graph context — token-compressed from codebase]\n{graph_context}"
-
-        profile = user_profile.load()
-        profile_block = user_profile.to_prompt_block(profile)
-        system = SYSTEM_PROMPT
-        if profile_block:
-            system += f"\n\n{profile_block}"
-        system += memory_block + obsidian_block + graph_block
-
+    def _chat_claude(
+        self,
+        user_text: str,
+        memories: Optional[list] = None,
+        obsidian_notes: Optional[list] = None,
+        graph_context: Optional[str] = None,
+    ) -> tuple[str, list]:
+        system = self._build_system(memories, obsidian_notes, graph_context)
         self.history.append({"role": "user", "content": user_text})
         messages = list(self.history)
         panels: list[dict] = []
@@ -481,44 +574,8 @@ class Brain:
                     if block.name == "delegate_to_agent":
                         result = agent_results.get(block.id, "[agent returned no result]")
                     elif block.name == "show_visual":
-                        inp = block.input
-                        panel_data = {
-                            "panel_type": "visual",
-                            "content_type": inp["content_type"],
-                            "title": inp["title"],
-                        }
-                        if inp["content_type"] == "stock" and inp.get("symbol"):
-                            panel_data["symbol"] = inp["symbol"].upper()
-                            panel_data["data"] = _fetch_stock_data(inp["symbol"].upper())
-                        elif inp["content_type"] == "score":
-                            query = inp.get("query") or inp.get("title", "")
-                            score_data = _fetch_sports_score(query)
-                            panel_data["data"] = score_data
-                            panel_data["game_id"] = score_data.get("game_id", "")
-                            panel_data["sport"] = score_data.get("sport", "basketball")
-                            panel_data["league"] = score_data.get("league", "nba")
-                        elif inp["content_type"] == "video" and inp.get("url"):
-                            url = inp["url"]
-                            if "youtube.com/watch" in url:
-                                vid_id = url.split("v=")[-1].split("&")[0]
-                                url = f"https://www.youtube.com/embed/{vid_id}?autoplay=0"
-                            elif "youtu.be/" in url:
-                                vid_id = url.split("youtu.be/")[-1].split("?")[0]
-                                url = f"https://www.youtube.com/embed/{vid_id}?autoplay=0"
-                            panel_data["url"] = url
-                        elif inp["content_type"] == "map":
-                            panel_data["url"] = _build_maps_url(inp)
-                            panel_data["api_key"] = GOOGLE_MAPS_API_KEY
-                            panel_data["map_mode"] = inp.get("map_mode", "place")
-                            panel_data["location"] = inp.get("location") or inp.get("destination") or inp.get("title", "")
-                            if inp.get("origin"):
-                                panel_data["origin"] = inp["origin"]
-                            if inp.get("destination"):
-                                panel_data["destination"] = inp["destination"]
-                        elif inp.get("url"):
-                            panel_data["url"] = inp["url"]
+                        panel_data, result = _handle_visual_tool(block.input)
                         panels.append(panel_data)
-                        result = f"Visual displayed: {inp['content_type']} — '{inp['title']}'."
                     else:
                         handler = TOOL_HANDLERS.get(block.name)
                         result = handler(block.input) if handler else f"Unknown tool: {block.name}"
@@ -539,7 +596,157 @@ class Brain:
         self.history.append({"role": "assistant", "content": reply})
         if len(self.history) > 40:
             self.history = self.history[-40:]
+        return reply, panels
 
+    def _stream_ollama_once(self, client, messages, on_token=None):
+        """Single streaming Ollama call.
+
+        on_token protocol (called from the calling thread):
+          "__start__"  — a text response is beginning (not a tool call)
+          str chunk    — text token
+          "__done__"   — text stream finished (final response)
+          "__cancel__" — this turn was a tool call, not text
+        """
+        stream = client.chat.completions.create(
+            model=self.ollama_model,
+            messages=messages,
+            tools=OLLAMA_TOOLS,
+            stream=True,
+            max_tokens=512,
+        )
+
+        full_text = ""
+        tool_calls_acc: dict[int, dict] = {}
+        finish_reason = None
+        is_text: Optional[bool] = None
+
+        for chunk in stream:
+            choice = chunk.choices[0]
+            if choice.finish_reason:
+                finish_reason = choice.finish_reason
+            delta = choice.delta
+
+            if delta.content:
+                full_text += delta.content
+                if is_text is None:
+                    is_text = True
+                    if on_token:
+                        on_token("__start__")
+                if on_token:
+                    on_token(delta.content)
+
+            if delta.tool_calls:
+                if is_text is None:
+                    is_text = False
+                for tc in delta.tool_calls:
+                    idx = tc.index
+                    if idx not in tool_calls_acc:
+                        tool_calls_acc[idx] = {"id": "", "name": "", "arguments": ""}
+                    if tc.id:
+                        tool_calls_acc[idx]["id"] = tc.id
+                    if tc.function:
+                        if tc.function.name:
+                            tool_calls_acc[idx]["name"] += tc.function.name
+                        if tc.function.arguments:
+                            tool_calls_acc[idx]["arguments"] += tc.function.arguments
+
+        if on_token:
+            on_token("__done__" if is_text else "__cancel__")
+
+        tool_calls_list = [
+            {
+                "id": tool_calls_acc[i]["id"],
+                "type": "function",
+                "function": {
+                    "name": tool_calls_acc[i]["name"],
+                    "arguments": tool_calls_acc[i]["arguments"],
+                },
+            }
+            for i in sorted(tool_calls_acc.keys())
+        ]
+        return full_text, tool_calls_list, finish_reason
+
+    def _chat_ollama(
+        self,
+        user_text: str,
+        memories: Optional[list] = None,
+        obsidian_notes: Optional[list] = None,
+        graph_context: Optional[str] = None,
+        on_token=None,
+    ) -> tuple[str, list]:
+        system = self._build_system(memories, obsidian_notes, graph_context)
+        system += "\n/no_think"
+
+        self.history.append({"role": "user", "content": user_text})
+        messages = [{"role": "system", "content": system}] + list(self.history)
+        panels: list[dict] = []
+        iterations = 0
+        client = self._get_ollama_client()
+        full_text = ""
+
+        while iterations < 12:
+            full_text, tool_calls_list, finish_reason = self._stream_ollama_once(
+                client, messages, on_token=on_token
+            )
+            iterations += 1
+
+            if finish_reason == "tool_calls":
+                messages.append({
+                    "role": "assistant",
+                    "content": full_text or "",
+                    "tool_calls": tool_calls_list,
+                })
+
+                agent_blocks = [tc for tc in tool_calls_list if tc["function"]["name"] == "delegate_to_agent"]
+                agent_results: dict[str, str] = {}
+                if agent_blocks:
+                    with ThreadPoolExecutor(max_workers=len(agent_blocks)) as ex:
+                        future_to_id: dict = {}
+                        for tc in agent_blocks:
+                            inp = json.loads(tc["function"]["arguments"])
+                            f = ex.submit(
+                                agent_registry.run_agent,
+                                inp["agent"], inp["task"], inp.get("context", ""),
+                            )
+                            future_to_id[f] = tc["id"]
+                        for future in as_completed(future_to_id):
+                            agent_results[future_to_id[future]] = future.result()
+
+                    for tc in agent_blocks:
+                        inp = json.loads(tc["function"]["arguments"])
+                        panels.append({
+                            "panel_type": inp["agent"],
+                            "title": inp["task"][:60],
+                            "content": agent_results.get(tc["id"], ""),
+                        })
+
+                for tc in tool_calls_list:
+                    name = tc["function"]["name"]
+                    inp = json.loads(tc["function"]["arguments"])
+
+                    if name == "delegate_to_agent":
+                        result = agent_results.get(tc["id"], "[agent returned no result]")
+                    elif name == "show_visual":
+                        panel_data, result = _handle_visual_tool(inp)
+                        panels.append(panel_data)
+                    else:
+                        handler = TOOL_HANDLERS.get(name)
+                        result = handler(inp) if handler else f"Unknown tool: {name}"
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc["id"],
+                        "content": str(result),
+                    })
+            else:
+                break
+
+        raw = full_text or "Sorry, I ran into an issue."
+        reply = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip() or raw.strip()
+
+        self.history.append({"role": "assistant", "content": reply})
+        if len(self.history) > 40:
+            self.history = self.history[-40:]
         return reply, panels
 
     def reset(self):
