@@ -1,0 +1,38 @@
+name: Auto PR on Push
+
+on:
+  push:
+    branches-ignore:
+      - main
+      - master
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  auto-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create PR if one does not exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXISTING=$(gh pr list \
+            --repo "${{ github.repository }}" \
+            --head "${{ github.ref_name }}" \
+            --state open \
+            --json number \
+            --jq '.[0].number' 2>/dev/null)
+
+          if [ -z "$EXISTING" ]; then
+            gh pr create \
+              --repo "${{ github.repository }}" \
+              --head "${{ github.ref_name }}" \
+              --base main \
+              --title "[${{ github.ref_name }}] Auto PR" \
+              --body "Automatically created on push to \`${{ github.ref_name }}\`. The AI Code Review Pipeline will post inline comments shortly."
+            echo "PR created for ${{ github.ref_name }}"
+          else
+            echo "PR #$EXISTING already exists for ${{ github.ref_name }}, skipping."
+          fi
