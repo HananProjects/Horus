@@ -10,13 +10,19 @@ export default function ConversationFeed({ messages, onSendText, onVoiceStart, o
 
   function handleSubmit(e) {
     e.preventDefault();
-    if (!input.trim()) return;
-    onSendText(input.trim());
+    const text = input.trim();
+    if (!text) return;
+    if (text.toLowerCase() === "stop") {
+      onStopSpeaking();
+      setInput("");
+      return;
+    }
+    onSendText(text);
     setInput("");
   }
 
   const isListening = status === "listening";
-  const isSpeaking = status === "speaking";
+  const isActive = status !== "idle";
 
   return (
     <div className="flex flex-col h-full">
@@ -51,7 +57,7 @@ export default function ConversationFeed({ messages, onSendText, onVoiceStart, o
       {/* Input bar — minimal, no border box */}
       <div className="px-4 py-4">
         <form onSubmit={handleSubmit} className="flex gap-2 items-center">
-          {isSpeaking ? (
+          {isActive ? (
             <button
               type="button"
               onClick={onStopSpeaking}
@@ -63,12 +69,7 @@ export default function ConversationFeed({ messages, onSendText, onVoiceStart, o
             <button
               type="button"
               onClick={onVoiceStart}
-              disabled={status !== "idle"}
-              className={`text-xs tracking-widest transition-all px-2 py-1 rounded ${
-                isListening
-                  ? "text-hud-success animate-pulse"
-                  : "text-hud-muted opacity-50 hover:opacity-100 hover:text-hud-accent"
-              }`}
+              className="text-xs tracking-widest transition-all px-2 py-1 rounded text-hud-muted opacity-50 hover:opacity-100 hover:text-hud-accent"
             >
               {isListening ? "● REC" : "MIC"}
             </button>

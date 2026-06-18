@@ -6,7 +6,7 @@ from typing import Optional
 import chromadb
 from chromadb.utils import embedding_functions
 
-VAULT_PATH = Path(r"C:\Users\Hanan\OneDrive - University of Saskatchewan\Obsidian Vault")
+VAULT_PATH = Path(r"B:\Obsidian Vault")
 HORUS_FOLDER = "Horus"
 VAULT_COLLECTION = "horus_vault"
 

@@ -14,6 +14,7 @@ from obsidian import ObsidianVault
 from wiki import WikiManager
 from learner import HorusLearner, LEARNING_INTERVAL_HOURS
 from briefing import MorningBriefing
+from conversation_logger import log_conversation
 import nodes as node_store
 
 app = FastAPI(title="Horus")
@@ -363,7 +364,9 @@ async def websocket_endpoint(ws: WebSocket):
                 )
 
             elif msg_type == "stop_speaking":
-                voice.stop_speaking()
+                voice.interrupt()
+                if current_task and not current_task.done():
+                    current_task.cancel()
                 await send_status(ws, "idle")
             elif msg_type == "dismiss_panel":
                 pass  # frontend handles panel dismissal locally
@@ -542,42 +545,36 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
             model_label = brain.ollama_model if brain.provider == "ollama" else "Claude"
             await send_action(ws, f"Calling {model_label}...")
 
-            if brain.provider == "ollama":
-                # Streaming path — tokens arrive word by word
-                loop = asyncio.get_running_loop()
-                stream_q: asyncio.Queue = asyncio.Queue()
+            # Streaming path — works for both Claude and Ollama
+            loop = asyncio.get_running_loop()
+            stream_q: asyncio.Queue = asyncio.Queue()
 
-                def on_token(sig):
-                    asyncio.run_coroutine_threadsafe(stream_q.put(sig), loop)
+            def on_token(sig):
+                asyncio.run_coroutine_threadsafe(stream_q.put(sig), loop)
 
-                brain_task = asyncio.create_task(
-                    asyncio.to_thread(
-                        brain.chat, user_text, relevant_memories, vault_notes or None, graph_context, on_token
-                    )
+            brain_task = asyncio.create_task(
+                asyncio.to_thread(
+                    brain.chat, user_text, relevant_memories, vault_notes or None, graph_context, on_token
                 )
+            )
 
-                # Drain the token queue until text is fully streamed
-                while True:
-                    try:
-                        sig = await asyncio.wait_for(stream_q.get(), timeout=120.0)
-                    except asyncio.TimeoutError:
-                        break
-                    if sig == "__start__":
-                        await ws.send_json({"type": "chunk_start"})
-                    elif sig == "__done__":
-                        await ws.send_json({"type": "chunk_end"})
-                        break
-                    elif sig == "__cancel__":
-                        await ws.send_json({"type": "chunk_cancel"})
-                    else:
-                        await ws.send_json({"type": "chunk", "content": sig})
+            # Drain the token queue until text is fully streamed
+            while True:
+                try:
+                    sig = await asyncio.wait_for(stream_q.get(), timeout=120.0)
+                except asyncio.TimeoutError:
+                    break
+                if sig == "__start__":
+                    await ws.send_json({"type": "chunk_start"})
+                elif sig == "__done__":
+                    await ws.send_json({"type": "chunk_end"})
+                    break
+                elif sig == "__cancel__":
+                    await ws.send_json({"type": "chunk_cancel"})
+                else:
+                    await ws.send_json({"type": "chunk", "content": sig})
 
-                response, panels = await brain_task
-            else:
-                response, panels = await asyncio.to_thread(
-                    brain.chat, user_text, relevant_memories, vault_notes or None, graph_context
-                )
-                await send_message(ws, "assistant", response)
+            response, panels = await brain_task
 
             for panel in panels:
                 await ws.send_json({"type": "panel", **panel})
@@ -588,6 +585,7 @@ async def handle_turn(ws: WebSocket, user_text: str, confirm):
 
             # Background wiki ingest and self-learning
             asyncio.create_task(asyncio.to_thread(wiki.ingest, user_text, response))
+            asyncio.create_task(asyncio.to_thread(log_conversation, user_text, response))
 
             await send_status(ws, "speaking")
             await send_action(ws, "Speaking response...")

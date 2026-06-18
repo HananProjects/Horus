@@ -149,6 +149,8 @@ You have access to Hanan's Obsidian knowledge vault. When relevant notes are pro
 
 You are constantly learning about Hanan. Whenever a conversation reveals something meaningful — a preference, a habit, a goal, a project — call update_user_profile immediately. Be specific. Over time this makes you genuinely tailored to him.
 
+You have access to Hanan's NaniStack agency dashboard. Use nanistack_dashboard to get live data on clients, requests, todos, and revenue. Query it any time Hanan asks about his agency, clients, tasks, income, or pending work.
+
 You have autonomous self-improvement capabilities that are already running:
 - Every 6 hours, a background learning daemon runs (even when the app is closed) that scans your wiki for knowledge gaps, researches them via web search, discovers new Claude Code skills on GitHub, and reviews and installs safe ones automatically.
 - After every conversation turn, a background Haiku call compiles what was discussed into structured wiki pages in Obsidian (Hanan Profile, Job Search, Technical Skills, Personal Life, Horus Project).
@@ -287,6 +289,21 @@ TOOLS = [
             "required": ["agent", "task"],
         },
     },
+    {
+        "name": "nanistack_dashboard",
+        "description": "Read live data from the NaniStack agency dashboard — clients, task requests, todos, and revenue stats.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "section": {
+                    "type": "string",
+                    "enum": ["all", "companies", "requests", "todos", "stats"],
+                    "description": "Which section to retrieve. Use 'all' for a full overview.",
+                },
+            },
+            "required": ["section"],
+        },
+    },
 ]
 
 # OpenAI-compatible tool format for Ollama
@@ -394,6 +411,44 @@ def _remove_node(node_id: int) -> str:
     return f"Node removed. Current nodes: {[n['label'] for n in nodes]}"
 
 
+_NANISTACK_DATA = Path("B:/NaniStack/data")
+
+def _nanistack_dashboard(section: str = "all") -> str:
+    try:
+        def _load(name: str):
+            p = _NANISTACK_DATA / f"{name}.json"
+            return json.loads(p.read_text(encoding="utf-8")) if p.exists() else []
+
+        need_companies = section in ("all", "companies", "stats")
+        need_requests  = section in ("all", "requests",  "stats")
+        need_todos     = section in ("all", "todos")
+
+        companies = _load("companies") if need_companies else []
+        requests  = _load("requests")  if need_requests  else []
+        todos     = _load("todos")     if need_todos     else []
+
+        out: dict = {}
+        if need_companies:
+            out["companies"] = companies
+        if need_requests:
+            out["recent_requests"] = requests[:15]
+        if need_todos:
+            out["todos"] = todos
+        if section in ("all", "stats"):
+            mrr = sum(c.get("mrr", 0) for c in companies)
+            open_reqs = [r for r in requests if r.get("status") in ("pending", "in_progress")]
+            out["stats"] = {
+                "companies": len(companies),
+                "totalRequests": len(requests),
+                "openRequests": len(open_reqs),
+                "monthlyRevenue": f"${mrr:,}",
+            }
+
+        return json.dumps(out, indent=2)
+    except Exception as e:
+        return f"Error reading NaniStack dashboard: {e}"
+
+
 TOOL_HANDLERS = {
     "web_search": lambda inp: _web_search(inp["query"]),
     "image_search": lambda inp: _image_search(inp["query"]),
@@ -410,6 +465,7 @@ TOOL_HANDLERS = {
     "gmail_trash": lambda inp: gmail_module.trash_emails(inp["message_ids"]),
     "gmail_bulk_trash": lambda inp: gmail_module.bulk_trash(inp["query"], inp.get("max_results", 500)),
     "gmail_send": lambda inp: gmail_module.send_email(inp["to"], inp["subject"], inp["body"], inp.get("thread_id")),
+    "nanistack_dashboard": lambda inp: _nanistack_dashboard(inp.get("section", "all")),
 }
 
 
@@ -457,8 +513,8 @@ def _handle_visual_tool(inp: dict) -> tuple:
 
 class Brain:
     def __init__(self):
-        self.client = anthropic.Anthropic()
-        self.model = "claude-sonnet-4-6"
+        self.client = anthropic.Anthropic(timeout=30.0)
+        self.model = "claude-haiku-4-5-20251001"
         self.provider: str = os.getenv("HORUS_PROVIDER", "claude")
         self.ollama_model: str = os.getenv("OLLAMA_MODEL", "qwen3:14b")
         self.ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
@@ -516,7 +572,7 @@ class Brain:
     ) -> tuple[str, list]:
         if self.provider == "ollama":
             return self._chat_ollama(user_text, memories, obsidian_notes, graph_context, on_token=on_token)
-        return self._chat_claude(user_text, memories, obsidian_notes, graph_context)
+        return self._chat_claude(user_text, memories, obsidian_notes, graph_context, on_token=on_token)
 
     def _chat_claude(
         self,
@@ -524,21 +580,35 @@ class Brain:
         memories: Optional[list] = None,
         obsidian_notes: Optional[list] = None,
         graph_context: Optional[str] = None,
+        on_token=None,
     ) -> tuple[str, list]:
         system = self._build_system(memories, obsidian_notes, graph_context)
         self.history.append({"role": "user", "content": user_text})
         messages = list(self.history)
         panels: list[dict] = []
         iterations = 0
+        response = None
 
         while iterations < 12:
-            response = self.client.messages.create(
+            got_text = False
+            with self.client.messages.stream(
                 model=self.model,
                 max_tokens=1024,
                 system=system,
                 tools=TOOLS,
                 messages=messages,
-            )
+            ) as stream:
+                for text in stream.text_stream:
+                    if not got_text:
+                        got_text = True
+                        if on_token:
+                            on_token("__start__")
+                    if on_token:
+                        on_token(text)
+                if on_token:
+                    on_token("__done__" if got_text else "__cancel__")
+                response = stream.get_final_message()
+
             iterations += 1
 
             if response.stop_reason == "tool_use":
@@ -583,7 +653,7 @@ class Brain:
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
-                        "content": result,
+                        "content": str(result),
                     })
                 messages.append({"role": "user", "content": tool_results})
             else:
