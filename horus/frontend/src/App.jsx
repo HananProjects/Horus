@@ -1,9 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import Dashboard from "./components/Dashboard";
+import HorusEyeOverlay from "./components/HorusEyeOverlay";
+
+const isOverlay = new URLSearchParams(window.location.search).has("overlay");
 
 const WS_URL = "ws://localhost:8000/ws";
 
 export default function App() {
+  if (isOverlay) return <HorusEyeOverlay />;
+
   const [messages, setMessages] = useState([]);
   const [status, setStatus] = useState("idle");
   const [actions, setActions] = useState([]);

@@ -1,0 +1,13 @@
+--- sync start ---
+process.type: undefined
+global.electron: undefined
+global.app: undefined
+globalThis.app: undefined
+--- nextTick ---
+process.type: undefined
+global.electron: undefined
+require('electron') error: require is not defined
+--- setImmediate ---
+process.type: undefined
+--- setTimeout 100ms ---
+process.type: undefined

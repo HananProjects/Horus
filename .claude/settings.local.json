@@ -9,7 +9,27 @@
       "Bash(git commit -m 'add Gmail integration and speech interrupt *)",
       "Bash(git checkout *)",
       "PowerShell(Get-Content \"B:\\\\Horus\\\\Horus\\\\horus\\\\backend\\\\.env\" | ForEach-Object { if \\($_ -match \"^ANTHROPIC\"\\) { \"ANTHROPIC key found: $\\($_.Substring\\(0, 30\\)\\)...\" } else { $_ } })",
-      "Bash(./venv/Scripts/pip.exe list *)"
+      "Bash(./venv/Scripts/pip.exe list *)",
+      "Bash(npm list *)",
+      "Bash(npx react-scripts *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Hanan\" -Recurse -Filter \"Hanan_Resume_May2026*\" -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object FullName, LastWriteTime)",
+      "PowerShell(python -c \"import docx; print\\('ok'\\)\" 2>&1)",
+      "Bash(python scripts/inspect_resume.py)",
+      "Bash(python scripts/update_resume.py)",
+      "Bash(python -c ' *)",
+      "PowerShell(Start-Process \"C:\\\\Users\\\\Hanan\\\\OneDrive - University of Saskatchewan\\\\Jobs\\\\Resumes\\\\Hanan_Hussain_Resume_June2026.docx\")",
+      "Bash(git restore *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "PowerShell(Get-ChildItem -Path \"b:\\\\Horus\\\\Horus\\\\horus\" -Recurse -Force | Where-Object {$_.PSIsContainer} | Select-Object FullName)",
+      "PowerShell(Get-ChildItem -Path \"b:\\\\Horus\\\\Horus\\\\horus\" -File -Recurse | Where-Object {$_.Extension -in '.py', '.js', '.jsx', '.json', '.md'} | Where-Object {-not $_.FullName.Contains\\('venv'\\) -and -not $_.FullName.Contains\\('__pycache__'\\) -and -not $_.FullName.Contains\\('node_modules'\\) -and -not $_.FullName.Contains\\('chroma_data'\\)} | Select-Object FullName)",
+      "Bash(venv/Scripts/pip install *)",
+      "Bash(venv/Scripts/python -c \"import openai; print\\(openai.__version__\\)\")",
+      "Bash(if [ -d \"/c/Users/Hanan/OneDrive - University of Saskatchewan/Obsidian Vault\" ]; then echo \"EXISTS\"; ls \"/c/Users/Hanan/OneDrive - University of Saskatchewan/Obsidian Vault/\" | head -20; else echo \"NOT FOUND at that path\"; fi)",
+      "Read(//c/Users/Hanan/OneDrive - University of Saskatchewan/Obsidian Vault//**)",
+      "Bash(ollama ps *)",
+      "Bash(nvidia-smi --query-gpu=name,memory.total,memory.used --format=csv,noheader)"
     ]
   }
 }

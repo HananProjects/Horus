@@ -2,6 +2,8 @@
   "name": "horus-dashboard",
   "version": "0.1.0",
   "private": true,
+  "main": "electron.js",
+  "homepage": "./",
   "dependencies": {
     "globe.gl": "^2.46.1",
     "react": "^18.2.0",
@@ -12,6 +14,8 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "overlay": "set ELECTRON_DEV=true&& electron .",
+    "overlay:prod": "react-scripts build && electron .",
     "backend": "cd ../backend && venv/Scripts/uvicorn main:app --reload"
   },
   "browserslist": {
@@ -23,5 +27,8 @@
     "development": [
       "last 1 chrome version"
     ]
+  },
+  "devDependencies": {
+    "electron": "^33.4.11"
   }
 }
